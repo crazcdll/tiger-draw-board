@@ -36,6 +36,8 @@ type Props = {
   color: string
   size: number
   bgColor: string
+  /** 图章笔当前选择的 emoji */
+  stamp: string
   /** 每次相机变化时回调（用于父组件显示缩放比例） */
   onScaleChange?: (scale: number) => void
   /** 历史栈变化时回调（undo/redo 按钮的可用态） */
@@ -349,6 +351,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       size: cfg.size,
       // 只有"笔"设备（Apple Pencil / 电磁笔）才启用笔压渲染
       hasPressure: e.pointerType === 'pen',
+      stampEmoji: cfg.brush === 'stamp' ? cfg.stamp : undefined,
       points: [toWorldPoint(e.clientX, e.clientY, e.pressure || undefined)],
     }
     render()
@@ -453,6 +456,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       : props.brush === 'marker'
         ? 'is-pen-marker'
         : 'is-pen-round'
+  // 注：新增的 neon/rainbow/stamp/spray 复用圆头笔光标，精度够用
 
   return (
     <>

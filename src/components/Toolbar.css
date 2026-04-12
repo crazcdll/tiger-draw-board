@@ -155,6 +155,33 @@
     0 0 0 6px var(--tiger-brown);
 }
 
+/* ===== 图章 emoji 按钮 ===== */
+.stamp-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 14px;
+  border: 3px solid var(--tiger-brown);
+  background: #fffdf5;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+.stamp-btn:hover {
+  background: var(--tiger-yellow);
+}
+.stamp-btn:active {
+  transform: scale(0.9);
+}
+.stamp-btn.active {
+  background: var(--tiger-orange);
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
 /* ===== 背景色按钮（圆角方形，和圆形的笔色区分） ===== */
 .bg-btn {
   width: 40px;

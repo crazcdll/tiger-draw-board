@@ -29,12 +29,25 @@ const BG_PALETTE = [
 
 const SIZES = [3, 6, 12, 22] as const
 
+// 图章笔可选 emoji
+const STAMP_PALETTE = [
+  '⭐',
+  '🌟',
+  '❤️',
+  '🎈',
+  '💫',
+  '🌸',
+  '🌈',
+  '🐯',
+] as const
+
 function App() {
   const [tool, setTool] = useState<ToolType>('pen')
   const [brush, setBrush] = useState<BrushType>('round')
   const [color, setColor] = useState<string>(PALETTE[0])
   const [size, setSize] = useState<number>(SIZES[1])
   const [bgColor, setBgColor] = useState<string>(() => loadBgColor() || BG_PALETTE[0])
+  const [stamp, setStamp] = useState<string>(STAMP_PALETTE[0])
   const [scale, setScale] = useState(1)
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
@@ -61,6 +74,7 @@ function App() {
         color={color}
         size={tool === 'eraser' ? Math.max(size * 2, 20) : size}
         bgColor={bgColor}
+        stamp={stamp}
         onScaleChange={setScale}
         onHistoryChange={handleHistoryChange}
       />
@@ -74,6 +88,8 @@ function App() {
         palette={PALETTE}
         sizes={SIZES}
         bgPalette={BG_PALETTE}
+        stamp={stamp}
+        stampPalette={STAMP_PALETTE}
         canUndo={canUndo}
         canRedo={canRedo}
         collapsed={toolbarCollapsed}
@@ -88,6 +104,7 @@ function App() {
         }}
         onSizeChange={setSize}
         onBgColorChange={setBgColor}
+        onStampChange={setStamp}
         onUndo={() => boardRef.current?.undo()}
         onRedo={() => boardRef.current?.redo()}
         onClear={() => setClearConfirmOpen(true)}

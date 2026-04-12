@@ -11,11 +11,14 @@ type Props = {
   palette: readonly string[]
   sizes: readonly number[]
   bgPalette: readonly string[]
+  stamp: string
+  stampPalette: readonly string[]
   onToolChange: (t: ToolType) => void
   onBrushChange: (b: BrushType) => void
   onColorChange: (c: string) => void
   onSizeChange: (s: number) => void
   onBgColorChange: (c: string) => void
+  onStampChange: (emoji: string) => void
   canUndo: boolean
   canRedo: boolean
   collapsed: boolean
@@ -68,6 +71,38 @@ export default function Toolbar(p: Props) {
           🖍️
         </button>
         <button
+          className={`tool-btn ${isPen && p.brush === 'neon' ? 'active' : ''}`}
+          onClick={() => p.onBrushChange('neon')}
+          title="霓虹笔"
+          aria-label="霓虹笔"
+        >
+          ✨
+        </button>
+        <button
+          className={`tool-btn ${isPen && p.brush === 'rainbow' ? 'active' : ''}`}
+          onClick={() => p.onBrushChange('rainbow')}
+          title="彩虹笔"
+          aria-label="彩虹笔"
+        >
+          🌈
+        </button>
+        <button
+          className={`tool-btn ${isPen && p.brush === 'stamp' ? 'active' : ''}`}
+          onClick={() => p.onBrushChange('stamp')}
+          title="图章笔"
+          aria-label="图章笔"
+        >
+          🌟
+        </button>
+        <button
+          className={`tool-btn ${isPen && p.brush === 'spray' ? 'active' : ''}`}
+          onClick={() => p.onBrushChange('spray')}
+          title="喷漆笔"
+          aria-label="喷漆笔"
+        >
+          💨
+        </button>
+        <button
           className={`tool-btn ${p.tool === 'eraser' ? 'active' : ''}`}
           onClick={() => p.onToolChange('eraser')}
           title="橡皮擦"
@@ -79,20 +114,36 @@ export default function Toolbar(p: Props) {
 
       <div className="divider" />
 
-      {/* 颜色 */}
-      <div className="group">
-        {p.palette.map((c) => (
-          <button
-            key={c}
-            className={`color-btn ${
-              isPen && p.color === c ? 'active' : ''
-            }`}
-            style={{ background: c }}
-            onClick={() => p.onColorChange(c)}
-            aria-label={`颜色 ${c}`}
-          />
-        ))}
-      </div>
+      {/* 颜色 or 图章 emoji（图章笔时替换为 emoji 选择） */}
+      {isPen && p.brush === 'stamp' ? (
+        <div className="group">
+          {p.stampPalette.map((emoji) => (
+            <button
+              key={emoji}
+              className={`stamp-btn ${p.stamp === emoji ? 'active' : ''}`}
+              onClick={() => p.onStampChange(emoji)}
+              aria-label={`图章 ${emoji}`}
+              title={`图章 ${emoji}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="group">
+          {p.palette.map((c) => (
+            <button
+              key={c}
+              className={`color-btn ${
+                isPen && p.color === c ? 'active' : ''
+              }`}
+              style={{ background: c }}
+              onClick={() => p.onColorChange(c)}
+              aria-label={`颜色 ${c}`}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="divider" />
 
