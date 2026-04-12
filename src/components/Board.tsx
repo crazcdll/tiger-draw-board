@@ -1,21 +1,60 @@
-import { useEffect, useRef, useState } from 'react'
-import type { Point, Stroke } from '../core/types'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react'
+import type { BrushType, Point, Stroke, ToolType } from '../core/types'
 import './Board.css'
 
+export type BoardHandle = {
+  undo: () => void
+  clear: () => void
+}
+
+type Props = {
+  tool: ToolType
+  brush: BrushType
+  color: string
+  size: number
+}
+
 /**
- * Step 2：最小可画版本
- * - 全屏 canvas
- * - 用 PointerEvent 统一处理鼠标 / 触摸 / Apple Pencil
- * - 笔迹以矢量形式存到 strokes[]，每次变动后整张重绘
- * - 目前只有一支黑色笔，工具栏下一步再加
+ * 画布主组件。
+ * - 通过 forwardRef 向外暴露 undo / clear（命令式 API，配合工具栏按钮调用）
+ * - 工具配置（tool/brush/color/size）作为 props 从 App 传入，存到 propsRef
+ *   里以便 pointer 事件处理函数始终读到最新值（避免闭包陈旧问题）
  */
-export default function Board() {
+const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const strokesRef = useRef<Stroke[]>([])
   const drawingRef = useRef<Stroke | null>(null)
   const [, forceRender] = useState(0)
 
-  // ---- 画布尺寸跟随窗口 + 处理 HiDPI ----
+  // 把最新 props 同步到 ref，handlePointerDown 里读 propsRef.current
+  const propsRef = useRef(props)
+  propsRef.current = props
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      undo: () => {
+        if (strokesRef.current.length === 0) return
+        strokesRef.current = strokesRef.current.slice(0, -1)
+        render()
+        forceRender((n) => n + 1)
+      },
+      clear: () => {
+        strokesRef.current = []
+        render()
+        forceRender((n) => n + 1)
+      },
+    }),
+    [],
+  )
+
+  // ---- 画布尺寸跟随窗口 + HiDPI ----
   useEffect(() => {
     const canvas = canvasRef.current!
     const resize = () => {
@@ -33,12 +72,11 @@ export default function Board() {
     return () => window.removeEventListener('resize', resize)
   }, [])
 
-  // ---- 渲染：一次性重绘所有 stroke ----
+  // ---- 渲染：重绘所有 stroke ----
   const render = () => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')!
-    // 用 CSS 像素坐标清屏（transform 已经是 dpr 缩放）
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight)
 
     const all = [...strokesRef.current]
@@ -49,16 +87,34 @@ export default function Board() {
   const drawStroke = (ctx: CanvasRenderingContext2D, stroke: Stroke) => {
     if (stroke.points.length === 0) return
     ctx.save()
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.strokeStyle = stroke.color
+
+    if (stroke.tool === 'eraser') {
+      // 真擦除：destination-out 会把当前笔画覆盖区的像素变透明
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = '#000' // 颜色无所谓，只看 alpha
+    } else {
+      ctx.globalCompositeOperation = 'source-over'
+      if (stroke.brush === 'marker') {
+        // 马克笔：方头 + 半透明，叠加会变深
+        ctx.lineCap = 'square'
+        ctx.lineJoin = 'round'
+        ctx.globalAlpha = 0.55
+      } else {
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+      }
+      ctx.strokeStyle = stroke.color
+    }
+
     ctx.lineWidth = stroke.size
 
     ctx.beginPath()
     const [first, ...rest] = stroke.points
     ctx.moveTo(first.x, first.y)
-    // 单点也画一个小圆点
     if (rest.length === 0) {
+      // 单点也画一个圆点
       ctx.lineTo(first.x + 0.01, first.y + 0.01)
     } else {
       for (const p of rest) ctx.lineTo(p.x, p.y)
@@ -79,11 +135,13 @@ export default function Board() {
 
   const handlePointerDown = (e: React.PointerEvent) => {
     canvasRef.current!.setPointerCapture(e.pointerId)
+    const cfg = propsRef.current
     drawingRef.current = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      tool: 'pen',
-      color: '#222',
-      size: 4,
+      tool: cfg.tool,
+      brush: cfg.brush,
+      color: cfg.color,
+      size: cfg.size,
       points: [getPoint(e)],
     }
     render()
@@ -98,20 +156,22 @@ export default function Board() {
   const handlePointerUp = (e: React.PointerEvent) => {
     if (!drawingRef.current) return
     canvasRef.current!.releasePointerCapture(e.pointerId)
-    strokesRef.current.push(drawingRef.current)
+    strokesRef.current = [...strokesRef.current, drawingRef.current]
     drawingRef.current = null
-    forceRender((n) => n + 1) // 后面工具栏会读 strokes 数量，先留个刷新钩子
+    forceRender((n) => n + 1)
     render()
   }
 
   return (
     <canvas
       ref={canvasRef}
-      className="board-canvas"
+      className={`board-canvas ${props.tool === 'eraser' ? 'is-eraser' : ''}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     />
   )
-}
+})
+
+export default Board

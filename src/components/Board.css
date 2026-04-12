@@ -7,3 +7,8 @@
   background: #fffdf5;
   cursor: crosshair;
 }
+
+.board-canvas.is-eraser {
+  /* 橡皮擦模式：用一个简单的圆形光标提示 */
+  cursor: cell;
+}

@@ -10,3 +10,6 @@ dist-ssr
 
 # Claude Code 本地配置
 .claude/
+
+# TypeScript 增量编译缓存
+*.tsbuildinfo
