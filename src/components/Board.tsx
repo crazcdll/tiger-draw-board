@@ -347,6 +347,8 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       brush: cfg.brush,
       color: cfg.color,
       size: cfg.size,
+      // 只有"笔"设备（Apple Pencil / 电磁笔）才启用笔压渲染
+      hasPressure: e.pointerType === 'pen',
       points: [toWorldPoint(e.clientX, e.clientY, e.pressure || undefined)],
     }
     render()

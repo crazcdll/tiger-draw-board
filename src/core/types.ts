@@ -16,6 +16,9 @@ export type Stroke = {
   tool: ToolType
   brush: BrushType
   color: string
+  /** 最大线宽（有压力时这是笔压 1.0 对应的宽度） */
   size: number
+  /** 是否启用笔压渲染。只有 pointerType === 'pen' 时为 true */
+  hasPressure?: boolean
   points: Point[]
 }
