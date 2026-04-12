@@ -45,17 +45,18 @@
 
 ## 🏗️ 架构要点
 
-### 三层画布渲染
+### 两层画布渲染
 
 ```
-main canvas        最终展示
-  ├── cache canvas    所有已完成 stroke 的栅格化缓存
-  └── current canvas  正在画的那一笔的增量累加层（图章/霓虹/彩虹/喷漆）
+main canvas     最终展示 + 绘制期间增量笔直接在上面累加
+  └── cache     所有已完成 stroke 的离屏栅格化缓存
 ```
 
 - **cache canvas**：pointerUp 后把新 stroke 增量贴上，undo/redo/clear 时作废重建
-- **current canvas**：贵的笔（图章 N 个 emoji / 霓虹多层发光）只画"自上次以来新增的部分"，pointerup 后整条贴入缓存
+- **增量笔**（图章 / 霓虹 / 彩虹 / 喷漆）**直接追加到主 canvas**，pointermove 热路径只画"自上次以来新增的那一段"，零全屏 blit
+- **pen / marker / eraser** 保留"每帧重画整条"策略（它们是单次 `beginPath + stroke`，本来就便宜）
 - 绘制一帧的成本与"已有多少笔画"和"当前笔画多长"都无关，只与本帧新增点数成正比
+- iPad Pro + Apple Pencil 在 120Hz 高频 pointermove 下也能保持流畅（早期有 current canvas 做中间层，每帧 2 次全屏 blit 在 120Hz 下带宽打爆，后来废掉改成直接追加）
 
 ### 手势期间用 CSS transform 而非重建缓存
 
