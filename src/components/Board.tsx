@@ -95,14 +95,24 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   // ===== 手势状态 =====
   /**
    * 当前屏幕上所有活动指针（canvas 相对坐标 + 时间戳）。
-   * 时间戳用于 GC 掉 iOS 偶尔漏发 pointerup 留下的"僵尸"指针 ——
-   * 否则下次 pointerdown 时 size >= 2 会误判为双指手势，画不出线。
+   * 时间戳用于检测"活跃状态" —— iOS 偶尔漏发 pointerup 留下的僵尸指针
+   * 时间戳会变陈旧，下次 pointerdown 时一眼就能看出来不活跃，清掉就行。
+   * 不然 pointersRef.size >= 2 会被误判为双指手势，drawingRef 被丢弃，画不出线。
    */
   const pointersRef = useRef<Map<number, { x: number; y: number; t: number }>>(
     new Map(),
   )
-  /** 僵尸指针 GC 阈值：超过这么久没收到事件就认为失联 */
-  const POINTER_STALE_MS = 2000
+  /**
+   * 最近一次 pointermove 超过这个时间没更新就判为"僵尸"。
+   * 用 30ms（60Hz 约 2 帧、120Hz 约 4 帧）：
+   *   - 活跃绘制时 pointermove 每 8~16ms 刷新一次，时间戳远小于 30ms
+   *   - iOS 漏 pointerup 后"手指离开 → 点按钮 → 点画布"的最短间隔也
+   *     有 ~100ms，会被正确判为僵尸
+   * 副作用：若用户在绘制中途"按住不动" > 30ms 再加第二指做手势，会被
+   * 误判为僵尸，当前笔提前提交。正常画画不会出现这种长时间按住不动的
+   * 情况，接受这个 corner case
+   */
+  const ACTIVE_POINTER_MS = 30
   /** 双指手势锚点 */
   const gestureRef = useRef<null | {
     initialDistance: number
@@ -551,21 +561,52 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
 
   // ===== Pointer 事件 =====
 
-  /** 在 pointerdown 开头 GC 掉 iOS 漏发 pointerup 留下的僵尸指针 */
-  const gcStalePointers = () => {
-    const now = Date.now()
-    for (const [id, p] of pointersRef.current) {
-      if (now - p.t > POINTER_STALE_MS) {
-        pointersRef.current.delete(id)
-      }
+  /**
+   * 判断当前是否真的在"活跃绘制中"：
+   *   - drawingRef 有值
+   *   - 没有手势/平移在进行
+   *   - pointersRef 里恰好只有 1 个指针
+   *   - 该指针最近 ACTIVE_POINTER_MS 内有更新
+   * 满足所有条件才认为是正在画的合法单指状态。
+   */
+  const isActivelyDrawing = () => {
+    if (!drawingRef.current) return false
+    if (gestureRef.current || panRef.current) return false
+    if (pointersRef.current.size !== 1) return false
+    const first = pointersRef.current.values().next().value
+    if (!first) return false
+    return Date.now() - first.t < ACTIVE_POINTER_MS
+  }
+
+  /**
+   * pointerdown 一进来的状态兜底。
+   * 如果既不在手势也不在平移，也不是活跃绘制状态 —— 那 pointersRef 里
+   * 的任何条目都是 iOS 漏发 pointerup 留下的僵尸，drawingRef 也是僵尸。
+   * 把僵尸笔提交保存，清空 pointersRef，避免下一步 size>=2 被误判成手势。
+   *
+   * 合法的"双指手势起始"场景（单指正在画，第二指落下）不会走到这里：
+   * 那种情况 isActivelyDrawing() 返回 true（finger 1 刚 pointermove 过，时间戳 < 1s）。
+   */
+  const resetStaleStateIfAny = () => {
+    if (gestureRef.current || panRef.current) return
+    if (isActivelyDrawing()) return
+
+    if (drawingRef.current) {
+      // 僵尸笔提交到缓存，保住用户已经画出的像素
+      const stranded = drawingRef.current
+      strokesRef.current = [...strokesRef.current, stranded]
+      redoStackRef.current = []
+      drawingRef.current = null
+      paintStrokeToCache(stranded)
+      incrementalStateRef.current = createIncrementalState()
     }
+    pointersRef.current.clear()
   }
 
   const handlePointerDown = (e: React.PointerEvent) => {
     const canvas = canvasRef.current!
-    // iOS Safari 偶尔吞 pointerup 导致 pointersRef 里有僵尸条目，
-    // 下次 pointerdown 就会误判成双指手势 → 画不出线。先扫一次。
-    gcStalePointers()
+    // 兜底：进来前若 pointersRef 或 drawingRef 存在僵尸，清理掉
+    resetStaleStateIfAny()
     // iOS 偶尔会对 setPointerCapture 抛 InvalidStateError；无 capture
     // 也能画完当前 stroke，忽略即可
     try {
@@ -693,6 +734,10 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     } catch {
       /* noop */
     }
+    // 记一下这个 pointer 本来是不是由我们追踪的。
+    // 如果不是（= resetStaleStateIfAny 早一步把僵尸清了），说明这是 iOS 的
+    // 迟到 pointerup —— 此时 drawingRef 可能已经是"新的一笔"的，不能误提交。
+    const wasTracked = pointersRef.current.has(e.pointerId)
     pointersRef.current.delete(e.pointerId)
 
     // 平移结束 → 烘焙到新 camera
@@ -711,8 +756,8 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       return
     }
 
-    // 单指画线结束
-    if (drawingRef.current) {
+    // 单指画线结束 —— 仅当这个 pointerup 对应的确实是我们在画的 pointer
+    if (drawingRef.current && wasTracked) {
       const committed = drawingRef.current
       strokesRef.current = [...strokesRef.current, committed]
       // 历史分叉：新画一笔后原来的 redo 栈无效
