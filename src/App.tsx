@@ -75,6 +75,9 @@ function App() {
           }
         }}
         onResetView={() => boardRef.current?.resetView()}
+        onExport={() => {
+          void boardRef.current?.exportPng()
+        }}
       />
     </div>
   )

@@ -13,12 +13,19 @@ import {
   screenToWorld,
   zoomAt,
 } from '../core/camera'
+import { drawStroke } from '../core/draw'
+import {
+  downloadBlob,
+  exportStrokesToPngBlob,
+  formatTimestamp,
+} from '../core/export'
 import './Board.css'
 
 export type BoardHandle = {
   undo: () => void
   clear: () => void
   resetView: () => void
+  exportPng: () => Promise<void>
 }
 
 type Props = {
@@ -91,6 +98,17 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
         render()
         reportScaleIfChanged()
         forceRender((n) => n + 1)
+      },
+      exportPng: async () => {
+        const blob = await exportStrokesToPngBlob({
+          strokes: strokesRef.current,
+          bgColor: propsRef.current.bgColor,
+        })
+        if (!blob) {
+          window.alert('画布还是空的，先画点什么再保存吧～')
+          return
+        }
+        downloadBlob(blob, `tiger-draw-${formatTimestamp()}.png`)
       },
     }),
     [],
@@ -170,42 +188,6 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     const all = [...strokesRef.current]
     if (drawingRef.current) all.push(drawingRef.current)
     for (const s of all) drawStroke(ctx, s)
-  }
-
-  const drawStroke = (ctx: CanvasRenderingContext2D, stroke: Stroke) => {
-    if (stroke.points.length === 0) return
-    ctx.save()
-
-    if (stroke.tool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out'
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.strokeStyle = '#000'
-    } else {
-      ctx.globalCompositeOperation = 'source-over'
-      if (stroke.brush === 'marker') {
-        ctx.lineCap = 'square'
-        ctx.lineJoin = 'round'
-        ctx.globalAlpha = 0.55
-      } else {
-        ctx.lineCap = 'round'
-        ctx.lineJoin = 'round'
-      }
-      ctx.strokeStyle = stroke.color
-    }
-
-    ctx.lineWidth = stroke.size
-
-    ctx.beginPath()
-    const [first, ...rest] = stroke.points
-    ctx.moveTo(first.x, first.y)
-    if (rest.length === 0) {
-      ctx.lineTo(first.x + 0.01, first.y + 0.01)
-    } else {
-      for (const p of rest) ctx.lineTo(p.x, p.y)
-    }
-    ctx.stroke()
-    ctx.restore()
   }
 
   // ===== 坐标辅助 =====

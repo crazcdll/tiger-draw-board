@@ -67,6 +67,9 @@
 .tool-btn.danger:hover {
   background: #ffb3b3;
 }
+.tool-btn.save:hover {
+  background: var(--tiger-leaf);
+}
 
 /* ===== 颜色按钮 ===== */
 .color-btn {

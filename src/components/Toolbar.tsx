@@ -19,6 +19,7 @@ type Props = {
   onUndo: () => void
   onClear: () => void
   onResetView: () => void
+  onExport: () => void
 }
 
 /**
@@ -126,6 +127,14 @@ export default function Toolbar(p: Props) {
           aria-label="撤销"
         >
           ↩️
+        </button>
+        <button
+          className="tool-btn save"
+          onClick={p.onExport}
+          title="保存为 PNG"
+          aria-label="保存为 PNG"
+        >
+          💾
         </button>
         <button
           className="zoom-btn"
