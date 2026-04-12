@@ -7,12 +7,15 @@ type Props = {
   color: string
   size: number
   scale: number
+  bgColor: string
   palette: readonly string[]
   sizes: readonly number[]
+  bgPalette: readonly string[]
   onToolChange: (t: ToolType) => void
   onBrushChange: (b: BrushType) => void
   onColorChange: (c: string) => void
   onSizeChange: (s: number) => void
+  onBgColorChange: (c: string) => void
   onUndo: () => void
   onClear: () => void
   onResetView: () => void
@@ -68,6 +71,22 @@ export default function Toolbar(p: Props) {
             style={{ background: c }}
             onClick={() => p.onColorChange(c)}
             aria-label={`颜色 ${c}`}
+          />
+        ))}
+      </div>
+
+      <div className="divider" />
+
+      {/* 背景色 */}
+      <div className="group">
+        {p.bgPalette.map((c) => (
+          <button
+            key={c}
+            className={`bg-btn ${p.bgColor === c ? 'active' : ''}`}
+            style={{ background: c }}
+            onClick={() => p.onBgColorChange(c)}
+            title="切换背景色"
+            aria-label={`背景色 ${c}`}
           />
         ))}
       </div>

@@ -26,6 +26,7 @@ type Props = {
   brush: BrushType
   color: string
   size: number
+  bgColor: string
   /** 每次相机变化时回调（用于父组件显示缩放比例） */
   onScaleChange?: (scale: number) => void
 }
@@ -358,14 +359,18 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   }
 
   return (
-    <canvas
-      ref={canvasRef}
-      className={`board-canvas ${props.tool === 'eraser' ? 'is-eraser' : ''}`}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-    />
+    <>
+      {/* 背景层：独立 DOM，不受 canvas 上橡皮擦的 destination-out 影响 */}
+      <div className="board-bg" style={{ background: props.bgColor }} />
+      <canvas
+        ref={canvasRef}
+        className={`board-canvas ${props.tool === 'eraser' ? 'is-eraser' : ''}`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      />
+    </>
   )
 })
 

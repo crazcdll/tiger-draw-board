@@ -1,10 +1,21 @@
+.board-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  transition: background 0.2s ease;
+  pointer-events: none;
+}
+
 .board-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
   display: block;
   width: 100vw;
   height: 100vh;
   /* 关键：禁止浏览器默认的触控手势（双指缩放页面、下拉刷新等） */
   touch-action: none;
-  background: #fffdf5;
+  background: transparent;
   cursor: crosshair;
 }
 

@@ -15,6 +15,16 @@ const PALETTE = [
   '#8b5a2b', // 棕
 ] as const
 
+// 背景色：柔和不刺眼，适合长时间看
+const BG_PALETTE = [
+  '#fffdf5', // 米白（默认）
+  '#fff4c2', // 浅黄
+  '#e3f2fd', // 浅蓝
+  '#e8f5e9', // 浅绿
+  '#fde4ec', // 浅粉
+  '#f0e6d2', // 牛皮纸
+] as const
+
 const SIZES = [3, 6, 12, 22] as const
 
 function App() {
@@ -22,6 +32,7 @@ function App() {
   const [brush, setBrush] = useState<BrushType>('round')
   const [color, setColor] = useState<string>(PALETTE[0])
   const [size, setSize] = useState<number>(SIZES[1])
+  const [bgColor, setBgColor] = useState<string>(BG_PALETTE[0])
   const [scale, setScale] = useState(1)
   const boardRef = useRef<BoardHandle>(null)
 
@@ -33,6 +44,7 @@ function App() {
         brush={brush}
         color={color}
         size={tool === 'eraser' ? Math.max(size * 2, 20) : size}
+        bgColor={bgColor}
         onScaleChange={setScale}
       />
       <Toolbar
@@ -41,8 +53,10 @@ function App() {
         color={color}
         size={size}
         scale={scale}
+        bgColor={bgColor}
         palette={PALETTE}
         sizes={SIZES}
+        bgPalette={BG_PALETTE}
         onToolChange={setTool}
         onBrushChange={(b) => {
           setBrush(b)
@@ -53,6 +67,7 @@ function App() {
           setTool('pen') // 选颜色时自动退出橡皮模式
         }}
         onSizeChange={setSize}
+        onBgColorChange={setBgColor}
         onUndo={() => boardRef.current?.undo()}
         onClear={() => {
           if (window.confirm('要清空整个画布吗？清空后无法恢复哦～')) {

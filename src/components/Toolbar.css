@@ -88,6 +88,38 @@
     0 0 0 6px var(--tiger-brown);
 }
 
+/* ===== 背景色按钮（圆角方形，和圆形的笔色区分） ===== */
+.bg-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 10px;
+  border: 3px solid var(--tiger-brown);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+  position: relative;
+}
+.bg-btn::after {
+  /* 右下角加一个小色斑，暗示"这是背景" */
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: rgba(90, 58, 34, 0.35);
+}
+.bg-btn:active {
+  transform: scale(0.9);
+}
+.bg-btn.active {
+  transform: scale(1.12);
+  box-shadow:
+    0 0 0 3px var(--tiger-yellow),
+    0 0 0 6px var(--tiger-brown);
+}
+
 /* ===== 粗细按钮 ===== */
 .size-btn {
   width: 46px;
