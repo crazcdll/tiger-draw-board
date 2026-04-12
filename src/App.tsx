@@ -22,6 +22,7 @@ function App() {
   const [brush, setBrush] = useState<BrushType>('round')
   const [color, setColor] = useState<string>(PALETTE[0])
   const [size, setSize] = useState<number>(SIZES[1])
+  const [scale, setScale] = useState(1)
   const boardRef = useRef<BoardHandle>(null)
 
   return (
@@ -32,12 +33,14 @@ function App() {
         brush={brush}
         color={color}
         size={tool === 'eraser' ? Math.max(size * 2, 20) : size}
+        onScaleChange={setScale}
       />
       <Toolbar
         tool={tool}
         brush={brush}
         color={color}
         size={size}
+        scale={scale}
         palette={PALETTE}
         sizes={SIZES}
         onToolChange={setTool}
@@ -56,6 +59,7 @@ function App() {
             boardRef.current?.clear()
           }
         }}
+        onResetView={() => boardRef.current?.resetView()}
       />
     </div>
   )

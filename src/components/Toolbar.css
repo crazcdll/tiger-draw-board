@@ -117,3 +117,35 @@
   border-radius: 50%;
   border: 2px solid rgba(90, 58, 34, 0.6);
 }
+
+/* ===== 缩放重置按钮：图标 + 百分比 ===== */
+.zoom-btn {
+  min-width: 66px;
+  height: 54px;
+  padding: 4px 10px;
+  border-radius: 18px;
+  border: 3px solid var(--tiger-brown);
+  background: #fffdf5;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+.zoom-btn:hover {
+  background: var(--tiger-yellow);
+}
+.zoom-btn:active {
+  transform: scale(0.92);
+}
+.zoom-icon {
+  font-size: 20px;
+}
+.zoom-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--tiger-brown);
+}

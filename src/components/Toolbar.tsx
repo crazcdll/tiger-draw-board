@@ -6,6 +6,7 @@ type Props = {
   brush: BrushType
   color: string
   size: number
+  scale: number
   palette: readonly string[]
   sizes: readonly number[]
   onToolChange: (t: ToolType) => void
@@ -14,6 +15,7 @@ type Props = {
   onSizeChange: (s: number) => void
   onUndo: () => void
   onClear: () => void
+  onResetView: () => void
 }
 
 /**
@@ -105,6 +107,15 @@ export default function Toolbar(p: Props) {
           aria-label="撤销"
         >
           ↩️
+        </button>
+        <button
+          className="zoom-btn"
+          onClick={p.onResetView}
+          title="回到原始视图"
+          aria-label="回到原始视图"
+        >
+          <span className="zoom-icon">🎯</span>
+          <span className="zoom-label">{Math.round(p.scale * 100)}%</span>
         </button>
         <button
           className="tool-btn danger"
