@@ -39,6 +39,7 @@ function App() {
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false)
   const boardRef = useRef<BoardHandle>(null)
 
   const handleHistoryChange = useCallback((u: boolean, r: boolean) => {
@@ -75,6 +76,7 @@ function App() {
         bgPalette={BG_PALETTE}
         canUndo={canUndo}
         canRedo={canRedo}
+        collapsed={toolbarCollapsed}
         onToolChange={setTool}
         onBrushChange={(b) => {
           setBrush(b)
@@ -93,6 +95,7 @@ function App() {
         onExport={() => {
           void boardRef.current?.exportPng()
         }}
+        onToggleCollapse={() => setToolbarCollapsed((v) => !v)}
       />
       <ConfirmDialog
         open={clearConfirmOpen}

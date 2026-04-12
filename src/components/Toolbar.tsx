@@ -18,11 +18,13 @@ type Props = {
   onBgColorChange: (c: string) => void
   canUndo: boolean
   canRedo: boolean
+  collapsed: boolean
   onUndo: () => void
   onRedo: () => void
   onClear: () => void
   onResetView: () => void
   onExport: () => void
+  onToggleCollapse: () => void
 }
 
 /**
@@ -31,6 +33,19 @@ type Props = {
  */
 export default function Toolbar(p: Props) {
   const isPen = p.tool === 'pen'
+
+  if (p.collapsed) {
+    return (
+      <button
+        className="toolbar-mini"
+        onClick={p.onToggleCollapse}
+        title="展开工具栏"
+        aria-label="展开工具栏"
+      >
+        <span className="toolbar-mini-icon">🐯</span>
+      </button>
+    )
+  }
 
   return (
     <div className="toolbar" role="toolbar" aria-label="画板工具栏">
@@ -165,6 +180,14 @@ export default function Toolbar(p: Props) {
           aria-label="清空"
         >
           🗑️
+        </button>
+        <button
+          className="tool-btn collapse"
+          onClick={p.onToggleCollapse}
+          title="收起工具栏"
+          aria-label="收起工具栏"
+        >
+          ⬇️
         </button>
       </div>
     </div>
