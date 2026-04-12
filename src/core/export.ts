@@ -114,6 +114,51 @@ export function downloadBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+/**
+ * 触屏优先的设备（iPad/手机）才走 Web Share，桌面走普通下载。
+ *
+ * 为什么不只依赖 navigator.canShare：Mac Chrome 也支持带文件的分享，
+ * 会弹出系统分享面板 —— 但桌面用户显然更期望一个"直接下载到文件夹"的体验。
+ * 用 CSS `(pointer: coarse)` 判断主输入方式是触屏还是鼠标，比 UA 嗅探更可靠。
+ */
+function isTouchPrimaryDevice(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false
+  }
+  return window.matchMedia('(pointer: coarse)').matches
+}
+
+/**
+ * 触屏设备优先用 Web Share API（iPad Safari 的分享面板支持"存储图像"进相册）；
+ * 桌面或不支持的环境降级为普通下载。
+ */
+export async function shareOrDownloadBlob(
+  blob: Blob,
+  filename: string,
+  title: string,
+): Promise<void> {
+  const file = new File([blob], filename, { type: blob.type })
+
+  const shouldShare =
+    isTouchPrimaryDevice() &&
+    typeof navigator !== 'undefined' &&
+    typeof navigator.canShare === 'function' &&
+    navigator.canShare({ files: [file] })
+
+  if (shouldShare) {
+    try {
+      await navigator.share({ files: [file], title })
+      return
+    } catch (err) {
+      // 用户点了"取消"：Safari 会抛 AbortError，此时不要再弹下载，避免同时出两份
+      if (err instanceof Error && err.name === 'AbortError') return
+      // 其他异常（权限/不受支持等）→ 继续走下面的降级下载
+    }
+  }
+
+  downloadBlob(blob, filename)
+}
+
 /** 生成 2026-04-12-153045 这样的时间戳，用于文件名 */
 export function formatTimestamp(d: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0')
