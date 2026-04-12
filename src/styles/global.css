@@ -20,6 +20,15 @@
   -webkit-touch-callout: none;
 }
 
+/*
+ * 按钮统一加 touch-action: manipulation 消除 iOS 300ms 点击延迟。
+ * 否则点完工具栏按钮后，iPad 要等 ~300ms 判断是否双击缩放，
+ * 期间在画布上的第一次触摸会被吞掉 —— 表现是"切颜色后第一笔画不出"。
+ */
+button {
+  touch-action: manipulation;
+}
+
 html, body, #root {
   margin: 0;
   padding: 0;
