@@ -93,8 +93,16 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   propsRef.current = props
 
   // ===== 手势状态 =====
-  /** 当前屏幕上所有活动指针（canvas 相对坐标） */
-  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  /**
+   * 当前屏幕上所有活动指针（canvas 相对坐标 + 时间戳）。
+   * 时间戳用于 GC 掉 iOS 偶尔漏发 pointerup 留下的"僵尸"指针 ——
+   * 否则下次 pointerdown 时 size >= 2 会误判为双指手势，画不出线。
+   */
+  const pointersRef = useRef<Map<number, { x: number; y: number; t: number }>>(
+    new Map(),
+  )
+  /** 僵尸指针 GC 阈值：超过这么久没收到事件就认为失联 */
+  const POINTER_STALE_MS = 2000
   /** 双指手势锚点 */
   const gestureRef = useRef<null | {
     initialDistance: number
@@ -542,11 +550,31 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   }
 
   // ===== Pointer 事件 =====
+
+  /** 在 pointerdown 开头 GC 掉 iOS 漏发 pointerup 留下的僵尸指针 */
+  const gcStalePointers = () => {
+    const now = Date.now()
+    for (const [id, p] of pointersRef.current) {
+      if (now - p.t > POINTER_STALE_MS) {
+        pointersRef.current.delete(id)
+      }
+    }
+  }
+
   const handlePointerDown = (e: React.PointerEvent) => {
     const canvas = canvasRef.current!
-    canvas.setPointerCapture(e.pointerId)
+    // iOS Safari 偶尔吞 pointerup 导致 pointersRef 里有僵尸条目，
+    // 下次 pointerdown 就会误判成双指手势 → 画不出线。先扫一次。
+    gcStalePointers()
+    // iOS 偶尔会对 setPointerCapture 抛 InvalidStateError；无 capture
+    // 也能画完当前 stroke，忽略即可
+    try {
+      canvas.setPointerCapture(e.pointerId)
+    } catch {
+      /* noop */
+    }
     const xy = getCanvasXY(e.clientX, e.clientY)
-    pointersRef.current.set(e.pointerId, xy)
+    pointersRef.current.set(e.pointerId, { ...xy, t: Date.now() })
 
     // 中键 or 空格 → 平移模式
     if (e.button === 1 || spaceDownRef.current) {
@@ -591,9 +619,10 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   }
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    // 更新活动指针位置
+    // 更新活动指针位置 + 时间戳
     if (pointersRef.current.has(e.pointerId)) {
-      pointersRef.current.set(e.pointerId, getCanvasXY(e.clientX, e.clientY))
+      const xy = getCanvasXY(e.clientX, e.clientY)
+      pointersRef.current.set(e.pointerId, { ...xy, t: Date.now() })
     }
 
     // 1) 键盘/中键平移
@@ -657,8 +686,12 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
 
   const handlePointerUp = (e: React.PointerEvent) => {
     const canvas = canvasRef.current!
-    if (canvas.hasPointerCapture(e.pointerId)) {
-      canvas.releasePointerCapture(e.pointerId)
+    try {
+      if (canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId)
+      }
+    } catch {
+      /* noop */
     }
     pointersRef.current.delete(e.pointerId)
 
@@ -705,13 +738,18 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
         : 'is-pen-round'
   // 注：新增的 neon/rainbow/stamp/spray 复用圆头笔光标，精度够用
 
+  // 触屏设备（iPad 等）禁掉所有 CSS cursor，避免 iPadOS 在 Pencil 点击
+  // 时因 cursor 属性而闪出一个 hover 效果的大光标。
+  const isTouchDevice =
+    typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0
+
   return (
     <>
       {/* 背景层：独立 DOM，不受 canvas 上橡皮擦的 destination-out 影响 */}
       <div className="board-bg" style={{ background: props.bgColor }} />
       <canvas
         ref={canvasRef}
-        className={`board-canvas ${cursorClass}`}
+        className={`board-canvas ${cursorClass} ${isTouchDevice ? 'is-touch' : ''}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

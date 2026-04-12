@@ -10,8 +10,15 @@
 
 import type { Point, Stroke } from './types'
 
-/** 笔压为 0 时的最小宽度占比（相对 stroke.size） */
-const MIN_PRESSURE_RATIO = 0.25
+/**
+ * 笔压 → 线宽倍率映射
+ *   p = 0    → 0.5 × size（最轻笔触）
+ *   p = 0.5  → 1.0 × size（标称，等同于手指/鼠标无笔压时的默认粗细）
+ *   p = 1.0  → 1.5 × size（重按加粗）
+ * 之前用过 0.25 + 0.75×p，但 p=0.5 时只给 0.625×size，导致 Pencil 画出来比
+ * 同粗细档的手指细一半，不符合"选哪档就是哪档"的直觉。
+ */
+const pressureRatio = (p: number): number => 0.5 + p
 
 export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
   if (stroke.points.length === 0) return
@@ -88,19 +95,26 @@ function drawPenOrMarker(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
   ctx.strokeStyle = stroke.color
   if (stroke.brush === 'marker') ctx.globalAlpha = 0.55
 
-  if (!stroke.hasPressure || stroke.points.length < 2) {
+  if (!stroke.hasPressure) {
+    // 手指 / 鼠标：恒宽
     ctx.lineWidth = stroke.size
     tracePath(ctx, stroke.points)
     ctx.stroke()
+  } else if (stroke.points.length < 2) {
+    // Pencil 单点：也按笔压算宽度，否则第一帧会渲染成全宽（看起来像"大光标闪一下"）
+    const p = stroke.points[0].pressure ?? 0.5
+    ctx.lineWidth = stroke.size * pressureRatio(p)
+    tracePath(ctx, stroke.points)
+    ctx.stroke()
   } else {
+    // Pencil 多点：每段用两端点 pressure 均值
     for (let i = 0; i < stroke.points.length - 1; i++) {
       const a = stroke.points[i]
       const b = stroke.points[i + 1]
       const pa = a.pressure ?? 0.5
       const pb = b.pressure ?? 0.5
       const p = (pa + pb) / 2
-      const ratio = MIN_PRESSURE_RATIO + (1 - MIN_PRESSURE_RATIO) * p
-      ctx.lineWidth = stroke.size * ratio
+      ctx.lineWidth = stroke.size * pressureRatio(p)
       ctx.beginPath()
       ctx.moveTo(a.x, a.y)
       ctx.lineTo(b.x, b.y)

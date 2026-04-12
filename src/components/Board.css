@@ -24,6 +24,14 @@
 }
 
 /*
+ * 触屏设备（iPad 等）不显示任何光标。
+ * 不用 @media (hover: hover) 媒体查询 —— iPad Pencil Pro 被 iPadOS 识别为
+ * hover: hover + pointer: fine，媒体查询挡不住。用 JS 判断
+ * navigator.maxTouchPoints 给根 canvas 加 is-touch class 显式关闭光标。
+ * is-touch 的规则放在下面所有自定义光标之后，保证优先级正确。
+ */
+
+/*
  * 自定义光标：三种工具用三种 SVG 区分
  *   - 圆头笔：十字准星 + 中心小圆点
  *   - 马克笔：十字准星 + 中心小方块
@@ -31,7 +39,6 @@
  * 每个形状都叠白+黑双描边，保证在任何背景色上都清晰可见。
  * SVG 里的 < > 用 %3C %3E 转义（CSS 里用 data URI 的标准做法）。
  */
-
 .board-canvas.is-pen-round {
   cursor:
     url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='3' x2='12' y2='21' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3Cline x1='3' y1='12' x2='21' y2='12' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3Cline x1='12' y1='3' x2='12' y2='21' stroke='black' stroke-width='1' stroke-linecap='round'/%3E%3Cline x1='3' y1='12' x2='21' y2='12' stroke='black' stroke-width='1' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='12' r='3.2' fill='black' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E")
@@ -51,4 +58,15 @@
     url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='white' stroke-width='3.5'/%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='black' stroke-width='1.5'/%3E%3Ccircle cx='16' cy='16' r='1.5' fill='black'/%3E%3Ccircle cx='16' cy='16' r='1.5' fill='none' stroke='white' stroke-width='1'/%3E%3C/svg%3E")
       16 16,
     cell;
+}
+
+/*
+ * is-touch 放最后，优先级覆盖上面的所有自定义光标规则。
+ * 写法用多重选择器覆盖 is-pen-round / is-pen-marker / is-eraser 的组合。
+ */
+.board-canvas.is-touch,
+.board-canvas.is-touch.is-pen-round,
+.board-canvas.is-touch.is-pen-marker,
+.board-canvas.is-touch.is-eraser {
+  cursor: none;
 }
