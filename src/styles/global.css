@@ -14,7 +14,10 @@
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+  /* iOS Safari 要三条一起上才彻底禁掉长按弹出菜单和文字选择框 */
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 html, body, #root {
