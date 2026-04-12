@@ -13,7 +13,12 @@ import {
   screenToWorld,
   zoomAt,
 } from '../core/camera'
-import { drawStroke } from '../core/draw'
+import {
+  createIncrementalState,
+  drawStroke,
+  drawStrokeIncremental,
+  type IncrementalState,
+} from '../core/draw'
 import {
   exportStrokesToPngBlob,
   formatTimestamp,
@@ -65,6 +70,12 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   const redoStackRef = useRef<Stroke[]>([])
   const drawingRef = useRef<Stroke | null>(null)
   const cameraRef = useRef<Camera>({ ...DEFAULT_CAMERA })
+  /** 离屏缓存：存所有已完成 stroke 的栅格化结果，避免每帧重绘历史笔画 */
+  const cacheCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const cacheValidRef = useRef(false)
+  /** 当前"正在画"层：图章/霓虹/彩虹/喷漆走增量累加，避免每帧重画整条 stroke */
+  const currentCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const incrementalStateRef = useRef<IncrementalState>(createIncrementalState())
   const [, forceRender] = useState(0)
 
   // 最新 props，避免 pointer 闭包拿到旧工具配置
@@ -121,6 +132,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     const last = strokesRef.current[strokesRef.current.length - 1]
     strokesRef.current = strokesRef.current.slice(0, -1)
     redoStackRef.current = [...redoStackRef.current, last]
+    invalidateCache()
     render()
     notifyHistory()
     scheduleSave()
@@ -132,6 +144,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     const last = redoStackRef.current[redoStackRef.current.length - 1]
     redoStackRef.current = redoStackRef.current.slice(0, -1)
     strokesRef.current = [...strokesRef.current, last]
+    invalidateCache()
     render()
     notifyHistory()
     scheduleSave()
@@ -141,6 +154,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   const clearFn = () => {
     strokesRef.current = []
     redoStackRef.current = []
+    invalidateCache()
     render()
     notifyHistory()
     flushSave() // 清空立即落盘，防止 400ms 内关页导致老数据残留
@@ -149,6 +163,8 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
 
   const resetViewFn = () => {
     cameraRef.current = { ...DEFAULT_CAMERA }
+    invalidateCache()
+    repaintCurrentAfterCameraChange()
     render()
     reportScaleIfChanged()
     forceRender((n) => n + 1)
@@ -188,6 +204,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     const restored = loadStrokes()
     if (restored.length > 0) {
       strokesRef.current = restored
+      invalidateCache()
       render()
       notifyHistory()
       forceRender((n) => n + 1)
@@ -211,6 +228,11 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       canvas.height = window.innerHeight * dpr
       canvas.style.width = `${window.innerWidth}px`
       canvas.style.height = `${window.innerHeight}px`
+      // 画布尺寸变了，两块离屏画布都要作废
+      invalidateCache()
+      clearCurrentCanvas()
+      incrementalStateRef.current = createIncrementalState()
+      repaintCurrentAfterCameraChange()
       render()
     }
     resize()
@@ -268,6 +290,8 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       const step = e.ctrlKey ? 0.01 : 0.002
       const factor = Math.exp(-e.deltaY * step)
       cameraRef.current = zoomAt(cameraRef.current, x, y, factor)
+      invalidateCache()
+      repaintCurrentAfterCameraChange()
       render()
       reportScaleIfChanged()
     }
@@ -275,25 +299,147 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     return () => canvas.removeEventListener('wheel', onWheel)
   }, [])
 
-  // ===== 渲染 =====
+  // ===== 渲染（带离屏缓存） =====
+  //
+  // 性能关键路径：iPad 上图章/霓虹笔多了会很卡，原因是每次 pointermove 都
+  // 重绘所有已完成 stroke。解决方案 —— 把所有已完成 stroke 栅格化到一块离屏
+  // canvas，pointermove 时只需 blit 缓存 + 画当前这一笔，历史笔画数再多都 O(1)。
+  //
+  // 缓存失效：strokes 变（undo/redo/clear/恢复）或 camera 变（缩放/平移）。
+  // pointerUp 提交新 stroke 时走"增量"路径，直接画到缓存上，不整体重建。
+
+  const invalidateCache = () => {
+    cacheValidRef.current = false
+  }
+
+  /** 若缓存无效则重建整张；画布尺寸变化也会自动触发 */
+  const ensureCache = () => {
+    const main = canvasRef.current
+    if (!main) return
+    let cache = cacheCanvasRef.current
+    if (!cache) {
+      cache = document.createElement('canvas')
+      cacheCanvasRef.current = cache
+    }
+    if (cache.width !== main.width || cache.height !== main.height) {
+      cache.width = main.width
+      cache.height = main.height
+      cacheValidRef.current = false
+    }
+    if (cacheValidRef.current) return
+
+    const ctx = cache.getContext('2d')!
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, cache.width, cache.height)
+    const dpr = window.devicePixelRatio || 1
+    const cam = cameraRef.current
+    const k = dpr * cam.scale
+    ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
+    for (const s of strokesRef.current) drawStroke(ctx, s)
+    cacheValidRef.current = true
+  }
+
+  /** 把一条刚完成的 stroke 增量画到现有缓存上（避免整体重建） */
+  const paintStrokeToCache = (stroke: Stroke) => {
+    const cache = cacheCanvasRef.current
+    if (!cache || !cacheValidRef.current) {
+      // 缓存本就无效 → 下次 render 会整体重建
+      return
+    }
+    const ctx = cache.getContext('2d')!
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    const dpr = window.devicePixelRatio || 1
+    const cam = cameraRef.current
+    const k = dpr * cam.scale
+    ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
+    drawStroke(ctx, stroke)
+  }
+
+  // ---- 当前"正在画"增量层 ----
+
+  /** 判断 stroke 是否走增量 current-canvas 路径 */
+  const isIncrementalStroke = (stroke: Stroke | null): boolean => {
+    if (!stroke || stroke.tool !== 'pen') return false
+    return (
+      stroke.brush === 'stamp' ||
+      stroke.brush === 'rainbow' ||
+      stroke.brush === 'neon' ||
+      stroke.brush === 'spray'
+    )
+  }
+
+  const ensureCurrentCanvas = () => {
+    const main = canvasRef.current
+    if (!main) return
+    let c = currentCanvasRef.current
+    if (!c) {
+      c = document.createElement('canvas')
+      currentCanvasRef.current = c
+    }
+    if (c.width !== main.width || c.height !== main.height) {
+      c.width = main.width
+      c.height = main.height
+    }
+  }
+
+  const clearCurrentCanvas = () => {
+    const c = currentCanvasRef.current
+    if (!c) return
+    const ctx = c.getContext('2d')!
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, c.width, c.height)
+  }
+
+  /** 把当前 drawingRef stroke 的新增部分增量画到 currentCanvas */
+  const paintCurrentIncremental = () => {
+    const stroke = drawingRef.current
+    if (!stroke || !isIncrementalStroke(stroke)) return
+    ensureCurrentCanvas()
+    const c = currentCanvasRef.current!
+    const ctx = c.getContext('2d')!
+    const dpr = window.devicePixelRatio || 1
+    const cam = cameraRef.current
+    const k = dpr * cam.scale
+    ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
+    drawStrokeIncremental(ctx, stroke, incrementalStateRef.current)
+  }
+
+  /** camera 变化时：清当前层并用当前 stroke 从头重画一次（保持视觉一致） */
+  const repaintCurrentAfterCameraChange = () => {
+    if (!drawingRef.current || !isIncrementalStroke(drawingRef.current)) return
+    clearCurrentCanvas()
+    incrementalStateRef.current = createIncrementalState()
+    paintCurrentIncremental()
+  }
+
   const render = () => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')!
-    const dpr = window.devicePixelRatio || 1
-    const cam = cameraRef.current
 
-    // 先重置变换，清整张物理画布
+    ensureCache()
+    const cache = cacheCanvasRef.current!
+
+    // 清屏 + 贴缓存（已完成 stroke 全在里面）
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(cache, 0, 0)
 
-    // 应用 dpr × 相机变换：canvas 画 world 坐标 → 屏幕像素
-    const k = dpr * cam.scale
-    ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
-
-    const all = [...strokesRef.current]
-    if (drawingRef.current) all.push(drawingRef.current)
-    for (const s of all) drawStroke(ctx, s)
+    // 正在画的这一笔
+    if (drawingRef.current) {
+      if (isIncrementalStroke(drawingRef.current)) {
+        // current-canvas 已由 pointermove 调用 paintCurrentIncremental 持续更新
+        const cur = currentCanvasRef.current
+        if (cur) ctx.drawImage(cur, 0, 0)
+      } else {
+        // pen/marker/eraser：每帧直接重画（便宜，一个 beginPath+stroke）
+        const dpr = window.devicePixelRatio || 1
+        const cam = cameraRef.current
+        const k = dpr * cam.scale
+        ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
+        drawStroke(ctx, drawingRef.current)
+      }
+    }
   }
 
   // ===== 坐标辅助 =====
@@ -357,6 +503,12 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       stampEmoji: cfg.brush === 'stamp' ? cfg.stamp : undefined,
       points: [toWorldPoint(e.clientX, e.clientY, e.pressure || undefined)],
     }
+    // 增量画笔：清当前层 + 初始化状态 + 画第一个点
+    if (isIncrementalStroke(drawingRef.current)) {
+      clearCurrentCanvas()
+      incrementalStateRef.current = createIncrementalState()
+      paintCurrentIncremental()
+    }
     render()
   }
 
@@ -378,6 +530,8 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
         x: cam.x - dx / cam.scale,
         y: cam.y - dy / cam.scale,
       }
+      invalidateCache()
+      repaintCurrentAfterCameraChange()
       render()
       return
     }
@@ -405,6 +559,10 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
         x: initialWorld.x - newCenter.x / newScale,
         y: initialWorld.y - newCenter.y / newScale,
       }
+      invalidateCache()
+      // 双指手势期间已在开头把 drawingRef 置为 null，不会有"正在画"层，
+      // 这里保险起见也调一下，无副作用
+      repaintCurrentAfterCameraChange()
       render()
       reportScaleIfChanged()
       return
@@ -415,6 +573,10 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       drawingRef.current.points.push(
         toWorldPoint(e.clientX, e.clientY, e.pressure || undefined),
       )
+      // 增量画笔：只把新增的部分贴到当前层
+      if (isIncrementalStroke(drawingRef.current)) {
+        paintCurrentIncremental()
+      }
       render()
     }
   }
@@ -442,10 +604,18 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
 
     // 单指画线结束
     if (drawingRef.current) {
-      strokesRef.current = [...strokesRef.current, drawingRef.current]
+      const committed = drawingRef.current
+      strokesRef.current = [...strokesRef.current, committed]
       // 历史分叉：新画一笔后原来的 redo 栈无效
       redoStackRef.current = []
       drawingRef.current = null
+      // 增量贴缓存：只画新这一条 stroke，不整体重建
+      paintStrokeToCache(committed)
+      // 如果是增量笔 → 清空当前层，下一条 stroke 从头来
+      if (isIncrementalStroke(committed)) {
+        clearCurrentCanvas()
+        incrementalStateRef.current = createIncrementalState()
+      }
       forceRender((n) => n + 1)
       render()
       notifyHistory()
