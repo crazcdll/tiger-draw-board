@@ -29,7 +29,7 @@ const BG_PALETTE = [
 
 const SIZES = [3, 6, 12, 22] as const
 
-// 图章笔可选 emoji
+// 图章笔可选样式：emoji 字符 + 程序化图章 key（见 core/draw.ts 的 PROCEDURAL_STAMPS）
 const STAMP_PALETTE = [
   '⭐',
   '🌟',
@@ -39,6 +39,9 @@ const STAMP_PALETTE = [
   '🌸',
   '🌈',
   '🐯',
+  '🐶',
+  'bichon1', // 程序化比熊 · 带黄围脖
+  'bichon2', // 程序化比熊 · 带腮红
 ] as const
 
 function App() {

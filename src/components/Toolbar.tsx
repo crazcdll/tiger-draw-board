@@ -1,4 +1,5 @@
 import type { BrushType, ToolType } from '../core/types'
+import StampPreview from './StampPreview'
 import './Toolbar.css'
 
 type Props = {
@@ -117,15 +118,15 @@ export default function Toolbar(p: Props) {
       {/* 颜色 or 图章 emoji（图章笔时替换为 emoji 选择） */}
       {isPen && p.brush === 'stamp' ? (
         <div className="group">
-          {p.stampPalette.map((emoji) => (
+          {p.stampPalette.map((stamp) => (
             <button
-              key={emoji}
-              className={`stamp-btn ${p.stamp === emoji ? 'active' : ''}`}
-              onClick={() => p.onStampChange(emoji)}
-              aria-label={`图章 ${emoji}`}
-              title={`图章 ${emoji}`}
+              key={stamp}
+              className={`stamp-btn ${p.stamp === stamp ? 'active' : ''}`}
+              onClick={() => p.onStampChange(stamp)}
+              aria-label={`图章 ${stamp}`}
+              title={`图章 ${stamp}`}
             >
-              {emoji}
+              <StampPreview stamp={stamp} />
             </button>
           ))}
         </div>

@@ -174,7 +174,7 @@ function drawRainbow(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
 // ===== 图章笔：沿路径等距离落下 emoji =====
 
 function drawStamp(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
-  const emoji = stroke.stampEmoji || '⭐'
+  const key = stroke.stampEmoji || '⭐'
   const fontSize = Math.max(18, stroke.size * 3)
   const spacing = fontSize * 0.85
 
@@ -184,7 +184,7 @@ function drawStamp(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
   ctx.textBaseline = 'middle'
 
   // 首点必定落一个
-  ctx.fillText(emoji, stroke.points[0].x, stroke.points[0].y)
+  stampAt(ctx, key, stroke.points[0].x, stroke.points[0].y, fontSize)
 
   if (stroke.points.length >= 2) {
     // 沿折线行走，每累计 spacing 就落一个图章
@@ -202,7 +202,7 @@ function drawStamp(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
         const step = spacing - acc
         const tx = a.x + dx * (consumed + step)
         const ty = a.y + dy * (consumed + step)
-        ctx.fillText(emoji, tx, ty)
+        stampAt(ctx, key, tx, ty, fontSize)
         consumed += step
         acc = 0
       }
@@ -416,13 +416,244 @@ function paintNeonIncremental(
   ctx.restore()
 }
 
+// ===== 程序化图章（非 emoji，直接在 canvas 上画） =====
+//
+// 用重叠圆形 + "双遍" 技巧画干净轮廓：
+//   Pass 1: 每个圆略放大后以棕色填充（outline 底色）
+//   Pass 2: 每个圆按原大小用白色填充覆盖
+// 这样圆之间的重叠区被后一遍白色盖掉，只在最外轮廓留下棕边，避免"圆里套圆"的脏线。
+
+type ProceduralStamp = (
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+) => void
+
+/**
+ * 坐姿比熊：头 + 身体 + 四条小腿 + 耳朵，剪影用双遍法保证外轮廓干净。
+ * 所有尺寸以 size（图章 fontSize 等价量）为基准，在 cx,cy 为中心绘制。
+ *
+ * variant:
+ *   'bib'  带黄色围脖（参考图里左边那只）
+ *   'plain' 带粉色腮红，无围脖（参考图里右边那只）
+ */
+type BichonVariant = 'bib' | 'plain'
+
+type SilPiece =
+  | { kind: 'circle'; x: number; y: number; r: number }
+  | { kind: 'ellipse'; x: number; y: number; rx: number; ry: number }
+  | { kind: 'rrect'; x: number; y: number; w: number; h: number; rr: number }
+
+function drawBichonAt(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  variant: BichonVariant,
+): void {
+  ctx.save()
+  const r = size / 2
+  const lw = Math.max(1, size * 0.045)
+
+  // 所有部件坐标是"相对 r 的单位比例"，方便调参。
+  // 总体布局：头在上，身体在下，四条前腿从身体底部伸出。
+  const pieces: SilPiece[] = [
+    // 身体主体（椭圆，上窄下宽的感觉靠微调 ry）
+    { kind: 'ellipse', x: 0, y: 0.28, rx: 0.52, ry: 0.4 },
+
+    // 四条腿（前面两条更清楚，后面两条稍微露一点脚尖）
+    // 前左腿
+    { kind: 'rrect', x: -0.34, y: 0.52, w: 0.18, h: 0.36, rr: 0.09 },
+    // 前右腿
+    { kind: 'rrect', x: 0.16, y: 0.52, w: 0.18, h: 0.36, rr: 0.09 },
+    // 后左脚（藏在身后稍微露一点）
+    { kind: 'rrect', x: -0.12, y: 0.72, w: 0.1, h: 0.16, rr: 0.05 },
+    // 后右脚
+    { kind: 'rrect', x: 0.02, y: 0.72, w: 0.1, h: 0.16, rr: 0.05 },
+
+    // 头（比身体稍小但因为蓬松看起来一样大）
+    { kind: 'circle', x: 0, y: -0.26, r: 0.4 },
+
+    // 两只耳朵（下垂的耳朵 = 头两侧的小椭圆）
+    { kind: 'ellipse', x: -0.38, y: -0.08, rx: 0.14, ry: 0.2 },
+    { kind: 'ellipse', x: 0.38, y: -0.08, rx: 0.14, ry: 0.2 },
+
+    // 头顶两团蓬毛
+    { kind: 'circle', x: -0.12, y: -0.56, r: 0.13 },
+    { kind: 'circle', x: 0.12, y: -0.56, r: 0.13 },
+  ]
+
+  // --- 零件绘制工具 ---
+  const drawPiece = (p: SilPiece, inflate: number) => {
+    ctx.beginPath()
+    if (p.kind === 'circle') {
+      ctx.arc(cx + p.x * r, cy + p.y * r, p.r * r + inflate, 0, Math.PI * 2)
+    } else if (p.kind === 'ellipse') {
+      ctx.ellipse(
+        cx + p.x * r,
+        cy + p.y * r,
+        p.rx * r + inflate,
+        p.ry * r + inflate,
+        0,
+        0,
+        Math.PI * 2,
+      )
+    } else {
+      // 圆角矩形，inflate 同步作用到位置和宽高
+      const px = cx + p.x * r - inflate
+      const py = cy + p.y * r - inflate
+      const w = p.w * r + inflate * 2
+      const h = p.h * r + inflate * 2
+      const rr = p.rr * r + inflate
+      ctx.roundRect(px, py, w, h, rr)
+    }
+    ctx.fill()
+  }
+
+  // Pass 1: 棕色轮廓底（每个零件略放大）
+  ctx.fillStyle = '#5a3a22'
+  for (const p of pieces) drawPiece(p, lw)
+
+  // Pass 2: 白色填充盖掉内部（只在最外轮廓留下棕边）
+  ctx.fillStyle = '#ffffff'
+  for (const p of pieces) drawPiece(p, 0)
+
+  // --- 脸部五官 ---
+  const hx = cx
+  const hy = cy - 0.26 * r
+  const hr = 0.4 * r
+
+  // 大眼睛 + 高光（让比熊显得可爱）
+  const eyeR = Math.max(1.8, r * 0.1)
+  const eyeY = hy + hr * 0.12
+  for (const ex of [hx - hr * 0.36, hx + hr * 0.36]) {
+    ctx.fillStyle = '#1a1a1a'
+    ctx.beginPath()
+    ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2)
+    ctx.fill()
+    // 眼睛里的白色高光
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.arc(
+      ex - eyeR * 0.3,
+      eyeY - eyeR * 0.35,
+      Math.max(0.8, eyeR * 0.42),
+      0,
+      Math.PI * 2,
+    )
+    ctx.fill()
+  }
+
+  // 鼻子（小黑三角，用圆代替也可，选圆更简单）
+  ctx.fillStyle = '#1a1a1a'
+  const noseY = hy + hr * 0.42
+  ctx.beginPath()
+  ctx.ellipse(hx, noseY, r * 0.07, r * 0.055, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  // 嘴（鼻子下的小 U 形）
+  ctx.strokeStyle = '#1a1a1a'
+  ctx.lineWidth = Math.max(1, r * 0.035)
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  ctx.moveTo(hx - r * 0.07, noseY + r * 0.08)
+  ctx.quadraticCurveTo(
+    hx,
+    noseY + r * 0.17,
+    hx + r * 0.07,
+    noseY + r * 0.08,
+  )
+  ctx.stroke()
+
+  if (variant === 'bib') {
+    // 黄色围脖，用波浪边圆来模拟花瓣状
+    const bibCx = cx
+    const bibCy = cy + r * 0.08
+    const baseR = r * 0.34
+    ctx.fillStyle = '#ffd84d'
+    ctx.strokeStyle = '#5a3a22'
+    ctx.lineWidth = lw * 0.9
+    ctx.beginPath()
+    const petals = 10
+    for (let i = 0; i <= petals; i++) {
+      const a = (i / petals) * Math.PI * 2 - Math.PI / 2
+      const rr1 = baseR * 1.15
+      const midA = ((i - 0.5) / petals) * Math.PI * 2 - Math.PI / 2
+      const rr2 = baseR * 0.85
+      const tipX = bibCx + Math.cos(a) * rr1
+      const tipY = bibCy + Math.sin(a) * rr1 * 0.65
+      const midX = bibCx + Math.cos(midA) * rr2
+      const midY = bibCy + Math.sin(midA) * rr2 * 0.6
+      if (i === 0) ctx.moveTo(tipX, tipY)
+      else ctx.quadraticCurveTo(midX, midY, tipX, tipY)
+    }
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+  } else {
+    // 粉色腮红
+    ctx.fillStyle = 'rgba(255, 170, 180, 0.75)'
+    for (const cxx of [hx - hr * 0.56, hx + hr * 0.56]) {
+      ctx.beginPath()
+      ctx.ellipse(cxx, eyeY + hr * 0.2, hr * 0.17, hr * 0.1, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  ctx.restore()
+}
+
+/**
+ * 若 key 是程序化图章，画到 (cx, cy) 并返回 true；否则返回 false（调用方走 emoji 路径）。
+ * size 约等于"emoji 字号"，保证和 fillText(emoji) 的视觉大小接近。
+ */
+export function drawProceduralStamp(
+  ctx: CanvasRenderingContext2D,
+  key: string,
+  cx: number,
+  cy: number,
+  size: number,
+): boolean {
+  const proc = PROCEDURAL_STAMPS[key]
+  if (!proc) return false
+  proc(ctx, cx, cy, size)
+  return true
+}
+
+const PROCEDURAL_STAMPS: Record<string, ProceduralStamp> = {
+  bichon1: (ctx, cx, cy, size) => drawBichonAt(ctx, cx, cy, size, 'bib'),
+  bichon2: (ctx, cx, cy, size) => drawBichonAt(ctx, cx, cy, size, 'plain'),
+}
+
+export function isProceduralStamp(key: string): boolean {
+  return key in PROCEDURAL_STAMPS
+}
+
+// ===== 图章渲染辅助：统一 emoji 与程序化图章的落笔 =====
+
+/**
+ * 在 (cx, cy) 画一个图章。调用方应已 save()、设置好 font/textAlign/textBaseline。
+ */
+function stampAt(
+  ctx: CanvasRenderingContext2D,
+  key: string,
+  cx: number,
+  cy: number,
+  size: number,
+): void {
+  if (drawProceduralStamp(ctx, key, cx, cy, size)) return
+  ctx.fillText(key, cx, cy)
+}
+
 function paintStampIncremental(
   ctx: CanvasRenderingContext2D,
   stroke: Stroke,
   state: IncrementalState,
 ): void {
   const pts = stroke.points
-  const emoji = stroke.stampEmoji || '⭐'
+  const key = stroke.stampEmoji || '⭐'
   const fontSize = Math.max(18, stroke.size * 3)
   const spacing = fontSize * 0.85
 
@@ -433,7 +664,7 @@ function paintStampIncremental(
 
   // 首点必定落一个图章
   if (state.nextPointIndex === 0 && pts.length >= 1) {
-    ctx.fillText(emoji, pts[0].x, pts[0].y)
+    stampAt(ctx, key, pts[0].x, pts[0].y, fontSize)
     state.nextPointIndex = 1
   }
 
@@ -450,7 +681,7 @@ function paintStampIncremental(
       const step = spacing - state.stampAcc
       const tx = a.x + dx * (consumed + step)
       const ty = a.y + dy * (consumed + step)
-      ctx.fillText(emoji, tx, ty)
+      stampAt(ctx, key, tx, ty, fontSize)
       consumed += step
       state.stampAcc = 0
     }
