@@ -80,8 +80,11 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   const bakedCameraRef = useRef<Camera>({ ...DEFAULT_CAMERA })
   /** 手势停止后延时 bake 的 timer id */
   const bakeTimerRef = useRef<number | null>(null)
-  /** 当前"正在画"层：图章/霓虹/彩虹/喷漆走增量累加，避免每帧重画整条 stroke */
-  const currentCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  /**
+   * 增量画笔（图章/霓虹/彩虹/喷漆）的行走状态。
+   * 这类笔不再走单独的 current canvas，而是**直接追加到 main canvas**，
+   * pointermove 热路径只画新增的一段，不做任何全屏 blit。
+   */
   const incrementalStateRef = useRef<IncrementalState>(createIncrementalState())
   const [, forceRender] = useState(0)
 
@@ -233,9 +236,8 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       canvas.height = window.innerHeight * dpr
       canvas.style.width = `${window.innerWidth}px`
       canvas.style.height = `${window.innerHeight}px`
-      // 画布尺寸变了，两块离屏画布都要作废；顺便把可能残留的 CSS transform 清掉
+      // 画布尺寸变了，缓存作废；增量状态也复位；顺便清可能残留的 CSS transform
       invalidateCache()
-      clearCurrentCanvas()
       incrementalStateRef.current = createIncrementalState()
       bakeView()
     }
@@ -294,8 +296,14 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       const step = e.ctrlKey ? 0.01 : 0.002
       const factor = Math.exp(-e.deltaY * step)
       cameraRef.current = zoomAt(cameraRef.current, x, y, factor)
-      render() // render 检测到 drift → CSS transform
-      scheduleBakeSoon() // 滚轮停 150ms 后烘焙到新 camera
+      if (drawingRef.current) {
+        // 画画中途滚轮：立即 bake 而不是走 CSS 漂移路径。
+        // 增量笔此时还在主 canvas 上累加像素，CSS 漂移会让新段画在错位置。
+        bakeView()
+      } else {
+        render() // render 检测到 drift → CSS transform
+        scheduleBakeSoon() // 滚轮停 150ms 后烘焙到新 camera
+      }
       reportScaleIfChanged()
     }
     canvas.addEventListener('wheel', onWheel, { passive: false })
@@ -430,9 +438,9 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     drawStroke(ctx, stroke)
   }
 
-  // ---- 当前"正在画"增量层 ----
+  // ---- 增量画笔：直接追加到主 canvas ----
 
-  /** 判断 stroke 是否走增量 current-canvas 路径 */
+  /** 判断 stroke 是否走增量追加路径（即每帧不重画整条） */
   const isIncrementalStroke = (stroke: Stroke | null): boolean => {
     if (!stroke || stroke.tool !== 'pen') return false
     return (
@@ -443,37 +451,20 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     )
   }
 
-  const ensureCurrentCanvas = () => {
-    const main = canvasRef.current
-    if (!main) return
-    let c = currentCanvasRef.current
-    if (!c) {
-      c = document.createElement('canvas')
-      currentCanvasRef.current = c
-    }
-    if (c.width !== main.width || c.height !== main.height) {
-      c.width = main.width
-      c.height = main.height
-    }
-  }
-
-  const clearCurrentCanvas = () => {
-    const c = currentCanvasRef.current
-    if (!c) return
-    const ctx = c.getContext('2d')!
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.clearRect(0, 0, c.width, c.height)
-  }
-
-  /** 把当前 drawingRef stroke 的新增部分增量画到 currentCanvas */
+  /**
+   * 把当前 drawingRef stroke 的**新增部分**追加画到主 canvas。
+   * 不做清屏、不 blit cache —— 主 canvas 目前的像素就是"cache + 之前已
+   * 画的前几段"，新段直接 stroke 上去就是对的。
+   */
   const paintCurrentIncremental = () => {
     const stroke = drawingRef.current
     if (!stroke || !isIncrementalStroke(stroke)) return
-    ensureCurrentCanvas()
-    const c = currentCanvasRef.current!
-    const ctx = c.getContext('2d')!
+    const main = canvasRef.current
+    if (!main) return
+    const ctx = main.getContext('2d')!
     const dpr = window.devicePixelRatio || 1
-    // 当前层与缓存绑定在同一个 bakedCamera 上，画出来位置才对齐
+    // 绘制期间 camera 不会变（pointerDown 先 bakeView，wheel 也会立即 bake），
+    // 所以用 bakedCamera 跟 cameraRef 是等价的
     const cam = bakedCameraRef.current
     const k = dpr * cam.scale
     ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
@@ -502,15 +493,21 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     ctx.drawImage(cache, 0, 0)
 
     if (drawingRef.current) {
+      const dpr = window.devicePixelRatio || 1
+      const cam = cameraRef.current
+      const k = dpr * cam.scale
+      ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
       if (isIncrementalStroke(drawingRef.current)) {
-        const cur = currentCanvasRef.current
-        if (cur) ctx.drawImage(cur, 0, 0)
+        // 此路径只在非热路径被触发（pointerDown 首帧 / 相机变化后 bake / undo 等）。
+        // 每次都从零开始画整条，顺便把 incrementalState 重置到末尾，
+        // 后续 pointermove 的 paintCurrentIncremental 可以正确"接着画"。
+        incrementalStateRef.current = createIncrementalState()
+        drawStrokeIncremental(
+          ctx,
+          drawingRef.current,
+          incrementalStateRef.current,
+        )
       } else {
-        const dpr = window.devicePixelRatio || 1
-        // 静态状态下 cameraRef === bakedCamera，用哪个都对
-        const cam = cameraRef.current
-        const k = dpr * cam.scale
-        ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
         drawStroke(ctx, drawingRef.current)
       }
     }
@@ -588,12 +585,8 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       stampEmoji: cfg.brush === 'stamp' ? cfg.stamp : undefined,
       points: [toWorldPoint(e.clientX, e.clientY, e.pressure || undefined)],
     }
-    // 增量画笔：清当前层 + 初始化状态 + 画第一个点
-    if (isIncrementalStroke(drawingRef.current)) {
-      clearCurrentCanvas()
-      incrementalStateRef.current = createIncrementalState()
-      paintCurrentIncremental()
-    }
+    // 增量画笔：render() 会检测到并走"从头画"分支，自动 reset state +
+    // 画初始点。pen/marker/eraser 也是 render() 画出来。
     render()
   }
 
@@ -652,11 +645,13 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       drawingRef.current.points.push(
         toWorldPoint(e.clientX, e.clientY, e.pressure || undefined),
       )
-      // 增量画笔：只把新增的部分贴到当前层
       if (isIncrementalStroke(drawingRef.current)) {
+        // 热路径：只把新增一段追加到主 canvas，零全屏 blit
         paintCurrentIncremental()
+      } else {
+        // pen/marker/eraser：维持老的"重画整条"策略（它们是单次 stroke 调用，便宜）
+        render()
       }
-      render()
     }
   }
 
@@ -692,12 +687,10 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       drawingRef.current = null
       // 增量贴缓存：只画新这一条 stroke，不整体重建
       paintStrokeToCache(committed)
-      // 如果是增量笔 → 清空当前层，下一条 stroke 从头来
-      if (isIncrementalStroke(committed)) {
-        clearCurrentCanvas()
-        incrementalStateRef.current = createIncrementalState()
-      }
+      // 重置增量状态，供下一条 stroke 使用
+      incrementalStateRef.current = createIncrementalState()
       forceRender((n) => n + 1)
+      // render 会把 cache 贴回 main（把中间态临时像素替换成正式状态）
       render()
       notifyHistory()
       scheduleSave()
