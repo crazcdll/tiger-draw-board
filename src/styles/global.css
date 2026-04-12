@@ -1,0 +1,36 @@
+/* 卡通可爱基调 —— 后续工具栏会沿用这套配色 */
+:root {
+  --tiger-orange: #ff9a3c;
+  --tiger-yellow: #ffd66e;
+  --tiger-brown: #5a3a22;
+  --tiger-cream: #fffdf5;
+  --tiger-sky: #8ed0f5;
+  --tiger-leaf: #8ed36b;
+
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: var(--tiger-brown);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--tiger-cream);
+  /* 防止 iPad 双指缩放整个页面 */
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+.app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}

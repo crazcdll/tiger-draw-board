@@ -1,0 +1,9 @@
+.board-canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  /* 关键：禁止浏览器默认的触控手势（双指缩放页面、下拉刷新等） */
+  touch-action: none;
+  background: #fffdf5;
+  cursor: crosshair;
+}
