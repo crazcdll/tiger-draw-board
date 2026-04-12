@@ -19,7 +19,32 @@
   cursor: crosshair;
 }
 
+/*
+ * 自定义光标：三种工具用三种 SVG 区分
+ *   - 圆头笔：十字准星 + 中心小圆点
+ *   - 马克笔：十字准星 + 中心小方块
+ *   - 橡皮擦：大空心圆环（明显比笔大一圈）
+ * 每个形状都叠白+黑双描边，保证在任何背景色上都清晰可见。
+ * SVG 里的 < > 用 %3C %3E 转义（CSS 里用 data URI 的标准做法）。
+ */
+
+.board-canvas.is-pen-round {
+  cursor:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='3' x2='12' y2='21' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3Cline x1='3' y1='12' x2='21' y2='12' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3Cline x1='12' y1='3' x2='12' y2='21' stroke='black' stroke-width='1' stroke-linecap='round'/%3E%3Cline x1='3' y1='12' x2='21' y2='12' stroke='black' stroke-width='1' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='12' r='3.2' fill='black' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E")
+      12 12,
+    crosshair;
+}
+
+.board-canvas.is-pen-marker {
+  cursor:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='3' x2='12' y2='21' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3Cline x1='3' y1='12' x2='21' y2='12' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3Cline x1='12' y1='3' x2='12' y2='21' stroke='black' stroke-width='1' stroke-linecap='round'/%3E%3Cline x1='3' y1='12' x2='21' y2='12' stroke='black' stroke-width='1' stroke-linecap='round'/%3E%3Crect x='7.5' y='7.5' width='9' height='9' fill='black' stroke='white' stroke-width='1.5' rx='1'/%3E%3C/svg%3E")
+      12 12,
+    crosshair;
+}
+
 .board-canvas.is-eraser {
-  /* 橡皮擦模式：用一个简单的圆形光标提示 */
-  cursor: cell;
+  cursor:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='white' stroke-width='3.5'/%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='black' stroke-width='1.5'/%3E%3Ccircle cx='16' cy='16' r='1.5' fill='black'/%3E%3Ccircle cx='16' cy='16' r='1.5' fill='none' stroke='white' stroke-width='1'/%3E%3C/svg%3E")
+      16 16,
+    cell;
 }

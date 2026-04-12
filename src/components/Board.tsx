@@ -445,13 +445,20 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     }
   }
 
+  const cursorClass =
+    props.tool === 'eraser'
+      ? 'is-eraser'
+      : props.brush === 'marker'
+        ? 'is-pen-marker'
+        : 'is-pen-round'
+
   return (
     <>
       {/* 背景层：独立 DOM，不受 canvas 上橡皮擦的 destination-out 影响 */}
       <div className="board-bg" style={{ background: props.bgColor }} />
       <canvas
         ref={canvasRef}
-        className={`board-canvas ${props.tool === 'eraser' ? 'is-eraser' : ''}`}
+        className={`board-canvas ${cursorClass}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
