@@ -17,6 +17,10 @@
   touch-action: none;
   background: transparent;
   cursor: crosshair;
+  /* 手势期间 JS 会临时给 transform 写入 translate + scale，做 GPU 加速的
+     "先套 CSS 变换，事后再 bake 进缓存"。transform-origin 必须是 0 0，
+     否则 scale 会绕中心缩放，跟我们推导的矩阵对不上。 */
+  transform-origin: 0 0;
 }
 
 /*

@@ -73,6 +73,13 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   /** 离屏缓存：存所有已完成 stroke 的栅格化结果，避免每帧重绘历史笔画 */
   const cacheCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const cacheValidRef = useRef(false)
+  /**
+   * 缓存被烘焙时对应的 camera。静态状态下等于 cameraRef.current。
+   * 手势期间 cameraRef 先走，bakedCamera 不动，它俩之差用 CSS transform 补上。
+   */
+  const bakedCameraRef = useRef<Camera>({ ...DEFAULT_CAMERA })
+  /** 手势停止后延时 bake 的 timer id */
+  const bakeTimerRef = useRef<number | null>(null)
   /** 当前"正在画"层：图章/霓虹/彩虹/喷漆走增量累加，避免每帧重画整条 stroke */
   const currentCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const incrementalStateRef = useRef<IncrementalState>(createIncrementalState())
@@ -163,9 +170,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
 
   const resetViewFn = () => {
     cameraRef.current = { ...DEFAULT_CAMERA }
-    invalidateCache()
-    repaintCurrentAfterCameraChange()
-    render()
+    bakeView() // 立刻烘焙（含清 CSS + 重建缓存 + render）
     reportScaleIfChanged()
     forceRender((n) => n + 1)
   }
@@ -228,12 +233,11 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       canvas.height = window.innerHeight * dpr
       canvas.style.width = `${window.innerWidth}px`
       canvas.style.height = `${window.innerHeight}px`
-      // 画布尺寸变了，两块离屏画布都要作废
+      // 画布尺寸变了，两块离屏画布都要作废；顺便把可能残留的 CSS transform 清掉
       invalidateCache()
       clearCurrentCanvas()
       incrementalStateRef.current = createIncrementalState()
-      repaintCurrentAfterCameraChange()
-      render()
+      bakeView()
     }
     resize()
     window.addEventListener('resize', resize)
@@ -290,9 +294,8 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       const step = e.ctrlKey ? 0.01 : 0.002
       const factor = Math.exp(-e.deltaY * step)
       cameraRef.current = zoomAt(cameraRef.current, x, y, factor)
-      invalidateCache()
-      repaintCurrentAfterCameraChange()
-      render()
+      render() // render 检测到 drift → CSS transform
+      scheduleBakeSoon() // 滚轮停 150ms 后烘焙到新 camera
       reportScaleIfChanged()
     }
     canvas.addEventListener('wheel', onWheel, { passive: false })
@@ -312,7 +315,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     cacheValidRef.current = false
   }
 
-  /** 若缓存无效则重建整张；画布尺寸变化也会自动触发 */
+  /** 若缓存无效则重建整张；总是用 bakedCamera 烘焙（手势期间不会变） */
   const ensureCache = () => {
     const main = canvasRef.current
     if (!main) return
@@ -332,11 +335,82 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, cache.width, cache.height)
     const dpr = window.devicePixelRatio || 1
-    const cam = cameraRef.current
+    // 注意：这里用 bakedCameraRef，不是 cameraRef。手势期间它们不同。
+    const cam = bakedCameraRef.current
     const k = dpr * cam.scale
     ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
     for (const s of strokesRef.current) drawStroke(ctx, s)
     cacheValidRef.current = true
+  }
+
+  // ===== 手势期间的 CSS transform 烘焙机制 =====
+  //
+  // 思路：pan/zoom 时 cameraRef 随手动，但不重建缓存 —— 而是给主 canvas
+  // 设置 `transform: translate(...) scale(...)`，用 GPU 做视觉上的平移缩放。
+  // 等手势停下（pointerUp / wheel 停 150ms / 开始画画等时机）再 "bake"：
+  //   1) 把 bakedCamera 对齐到 cameraRef
+  //   2) 清掉 canvas 的 CSS transform
+  //   3) 作废缓存，下一次 render 重建到新 camera
+  //
+  // 推导：设世界点 P
+  //   缓存像素坐标 = (P - bakedCam) * bakedScale
+  //   实时像素坐标 = (P - liveCam)  * liveScale
+  //   CSS transform T(x) = a*x + b 要满足 T(缓存像素) = 实时像素
+  //   展开后 a = liveScale / bakedScale，b = liveScale * (bakedCam - liveCam)
+  //   CSS 顺序是 translate(b) scale(a)：右乘 = 先 scale 再 translate ✓
+
+  const isCameraDrifted = () => {
+    const c = cameraRef.current
+    const b = bakedCameraRef.current
+    return c.x !== b.x || c.y !== b.y || c.scale !== b.scale
+  }
+
+  const applyViewTransform = () => {
+    const main = canvasRef.current
+    if (!main) return
+    const cam = cameraRef.current
+    const baked = bakedCameraRef.current
+    if (cam.x === baked.x && cam.y === baked.y && cam.scale === baked.scale) {
+      if (main.style.transform) main.style.transform = ''
+      return
+    }
+    const a = cam.scale / baked.scale
+    const bx = cam.scale * (baked.x - cam.x)
+    const by = cam.scale * (baked.y - cam.y)
+    main.style.transform = `translate(${bx}px, ${by}px) scale(${a})`
+  }
+
+  const cancelScheduledBake = () => {
+    if (bakeTimerRef.current !== null) {
+      window.clearTimeout(bakeTimerRef.current)
+      bakeTimerRef.current = null
+    }
+  }
+
+  /** 手势结束类事件统一进入这里：烘焙到新 camera，清 CSS，重建缓存 */
+  const bakeView = () => {
+    cancelScheduledBake()
+    const drifted = isCameraDrifted()
+    const main = canvasRef.current
+    if (!drifted) {
+      // 已经对齐：只保证 CSS 干净 + 缓存有效
+      if (main && main.style.transform) main.style.transform = ''
+      if (!cacheValidRef.current) render()
+      return
+    }
+    bakedCameraRef.current = { ...cameraRef.current }
+    if (main) main.style.transform = ''
+    invalidateCache()
+    render()
+  }
+
+  /** 滚轮停下 150ms 后自动 bake（桌面滚轮缩放场景） */
+  const scheduleBakeSoon = (delayMs = 150) => {
+    cancelScheduledBake()
+    bakeTimerRef.current = window.setTimeout(() => {
+      bakeTimerRef.current = null
+      bakeView()
+    }, delayMs)
   }
 
   /** 把一条刚完成的 stroke 增量画到现有缓存上（避免整体重建） */
@@ -349,7 +423,8 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     const ctx = cache.getContext('2d')!
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     const dpr = window.devicePixelRatio || 1
-    const cam = cameraRef.current
+    // 缓存是按 bakedCamera 画的，增量也必须用 bakedCamera
+    const cam = bakedCameraRef.current
     const k = dpr * cam.scale
     ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
     drawStroke(ctx, stroke)
@@ -398,42 +473,41 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     const c = currentCanvasRef.current!
     const ctx = c.getContext('2d')!
     const dpr = window.devicePixelRatio || 1
-    const cam = cameraRef.current
+    // 当前层与缓存绑定在同一个 bakedCamera 上，画出来位置才对齐
+    const cam = bakedCameraRef.current
     const k = dpr * cam.scale
     ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
     drawStrokeIncremental(ctx, stroke, incrementalStateRef.current)
   }
 
-  /** camera 变化时：清当前层并用当前 stroke 从头重画一次（保持视觉一致） */
-  const repaintCurrentAfterCameraChange = () => {
-    if (!drawingRef.current || !isIncrementalStroke(drawingRef.current)) return
-    clearCurrentCanvas()
-    incrementalStateRef.current = createIncrementalState()
-    paintCurrentIncremental()
-  }
-
   const render = () => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')!
 
+    // 手势期间（cameraRef !== bakedCamera）只更新 CSS transform，不重绘
+    if (isCameraDrifted()) {
+      applyViewTransform()
+      return
+    }
+
+    // 静态状态：确保 CSS transform 为空，然后正常重绘
+    if (canvas.style.transform) canvas.style.transform = ''
+
+    const ctx = canvas.getContext('2d')!
     ensureCache()
     const cache = cacheCanvasRef.current!
 
-    // 清屏 + 贴缓存（已完成 stroke 全在里面）
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(cache, 0, 0)
 
-    // 正在画的这一笔
     if (drawingRef.current) {
       if (isIncrementalStroke(drawingRef.current)) {
-        // current-canvas 已由 pointermove 调用 paintCurrentIncremental 持续更新
         const cur = currentCanvasRef.current
         if (cur) ctx.drawImage(cur, 0, 0)
       } else {
-        // pen/marker/eraser：每帧直接重画（便宜，一个 beginPath+stroke）
         const dpr = window.devicePixelRatio || 1
+        // 静态状态下 cameraRef === bakedCamera，用哪个都对
         const cam = cameraRef.current
         const k = dpr * cam.scale
         ctx.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k)
@@ -443,9 +517,17 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   }
 
   // ===== 坐标辅助 =====
+  //
+  // 坑提示：不要用 canvas.getBoundingClientRect()。
+  // getBoundingClientRect **会反映 CSS transform**，手势期间 canvas 被
+  // CSS translate/scale 了，rect 返回的是变换后的位置，指针坐标会被
+  // 错误地"去变换"，gesture 数学就崩了（图像抖动、飞出屏幕；
+  // wheel 会 1-2 秒后不再围绕光标缩放）。
+  //
+  // 画布是 position: fixed; inset: 0，布局上就在视口 (0,0)，所以
+  // canvas CSS 像素坐标直接等于视口坐标 = clientX/Y，不需要 rect。
   const getCanvasXY = (clientX: number, clientY: number) => {
-    const rect = canvasRef.current!.getBoundingClientRect()
-    return { x: clientX - rect.left, y: clientY - rect.top }
+    return { x: clientX, y: clientY }
   }
 
   const toWorldPoint = (clientX: number, clientY: number, pressure?: number): Point => {
@@ -490,6 +572,9 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       return
     }
 
+    // 开始画画前先确保 camera 已烘焙（比如刚滚了滚轮还没到 150ms 就开画）
+    bakeView()
+
     // 单指画线
     const cfg = propsRef.current
     drawingRef.current = {
@@ -530,9 +615,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
         x: cam.x - dx / cam.scale,
         y: cam.y - dy / cam.scale,
       }
-      invalidateCache()
-      repaintCurrentAfterCameraChange()
-      render()
+      render() // 只走 CSS transform，不重建缓存
       return
     }
 
@@ -559,11 +642,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
         x: initialWorld.x - newCenter.x / newScale,
         y: initialWorld.y - newCenter.y / newScale,
       }
-      invalidateCache()
-      // 双指手势期间已在开头把 drawingRef 置为 null，不会有"正在画"层，
-      // 这里保险起见也调一下，无副作用
-      repaintCurrentAfterCameraChange()
-      render()
+      render() // 只走 CSS transform，避免重建缓存拖累手感
       reportScaleIfChanged()
       return
     }
@@ -588,9 +667,10 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     }
     pointersRef.current.delete(e.pointerId)
 
-    // 平移结束
+    // 平移结束 → 烘焙到新 camera
     if (panRef.current) {
       panRef.current = null
+      bakeView()
       return
     }
 
@@ -598,6 +678,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     if (gestureRef.current) {
       if (pointersRef.current.size === 0) {
         gestureRef.current = null
+        bakeView()
       }
       return
     }
