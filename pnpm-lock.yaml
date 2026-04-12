@@ -15,6 +15,9 @@ importers:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
     devDependencies:
+      '@cloudbase/cli':
+        specifier: ^3.0.4
+        version: 3.0.4
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.28
@@ -118,6 +121,10 @@ packages:
   '@babel/types@7.29.0':
     resolution: {integrity: sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==}
     engines: {node: '>=6.9.0'}
+
+  '@cloudbase/cli@3.0.4':
+    resolution: {integrity: sha512-grhMJhBeTbbmAXF3jJnso9aseVEDPgHhwXNBsZMYEzql2gtmJaT3VEII3UoqMbrDoeRSZIJpbBaPqt8mOkLEAA==}
+    hasBin: true
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -726,6 +733,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
+
+  '@cloudbase/cli@3.0.4': {}
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true

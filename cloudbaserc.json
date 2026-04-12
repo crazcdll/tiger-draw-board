@@ -1,0 +1,17 @@
+{
+  "version": "2.0",
+  "envId": "tiger-draw-6gqbt08yfc4bd473",
+  "framework": {
+    "name": "tiger-draw-board",
+    "plugins": {
+      "client": {
+        "use": "@cloudbase/framework-plugin-website",
+        "inputs": {
+          "outputPath": "dist",
+          "cloudPath": "/",
+          "ignore": [".git", ".github", "node_modules", "cloudbaserc.json"]
+        }
+      }
+    }
+  }
+}
