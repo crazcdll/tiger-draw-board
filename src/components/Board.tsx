@@ -19,6 +19,7 @@ import {
   exportStrokesToPngBlob,
   formatTimestamp,
 } from '../core/export'
+import { loadStrokes, saveStrokes } from '../core/storage'
 import './Board.css'
 
 export type BoardHandle = {
@@ -96,6 +97,23 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     )
   }
 
+  // ===== 自动保存到 localStorage（400ms 防抖） =====
+  const saveTimerRef = useRef<number | null>(null)
+  const scheduleSave = () => {
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(() => {
+      saveStrokes(strokesRef.current)
+      saveTimerRef.current = null
+    }, 400)
+  }
+  const flushSave = () => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    saveStrokes(strokesRef.current)
+  }
+
   const undoFn = () => {
     if (strokesRef.current.length === 0) return
     const last = strokesRef.current[strokesRef.current.length - 1]
@@ -103,6 +121,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     redoStackRef.current = [...redoStackRef.current, last]
     render()
     notifyHistory()
+    scheduleSave()
     forceRender((n) => n + 1)
   }
 
@@ -113,6 +132,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     strokesRef.current = [...strokesRef.current, last]
     render()
     notifyHistory()
+    scheduleSave()
     forceRender((n) => n + 1)
   }
 
@@ -121,6 +141,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     redoStackRef.current = []
     render()
     notifyHistory()
+    flushSave() // 清空立即落盘，防止 400ms 内关页导致老数据残留
     forceRender((n) => n + 1)
   }
 
@@ -156,6 +177,25 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
+
+  // ===== 初次挂载：从 localStorage 恢复之前的作品 =====
+  useEffect(() => {
+    const restored = loadStrokes()
+    if (restored.length > 0) {
+      strokesRef.current = restored
+      render()
+      notifyHistory()
+      forceRender((n) => n + 1)
+    }
+    // 关页前确保未落盘的 stroke 写进去
+    const onBeforeUnload = () => flushSave()
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      flushSave()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ===== 画布尺寸跟随窗口 + HiDPI =====
   useEffect(() => {
@@ -401,6 +441,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       forceRender((n) => n + 1)
       render()
       notifyHistory()
+      scheduleSave()
     }
   }
 

@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Board, { type BoardHandle } from './components/Board'
 import Toolbar from './components/Toolbar'
 import ConfirmDialog from './components/ConfirmDialog'
 import type { BrushType, ToolType } from './core/types'
+import { loadBgColor, saveBgColor } from './core/storage'
 
 // 男孩向调色板：鲜亮 + 基础黑，覆盖最常用的颜色
 const PALETTE = [
@@ -33,7 +34,7 @@ function App() {
   const [brush, setBrush] = useState<BrushType>('round')
   const [color, setColor] = useState<string>(PALETTE[0])
   const [size, setSize] = useState<number>(SIZES[1])
-  const [bgColor, setBgColor] = useState<string>(BG_PALETTE[0])
+  const [bgColor, setBgColor] = useState<string>(() => loadBgColor() || BG_PALETTE[0])
   const [scale, setScale] = useState(1)
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
@@ -44,6 +45,11 @@ function App() {
     setCanUndo(u)
     setCanRedo(r)
   }, [])
+
+  // 背景色变化时持久化
+  useEffect(() => {
+    saveBgColor(bgColor)
+  }, [bgColor])
 
   return (
     <div className="app">
