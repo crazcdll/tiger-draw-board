@@ -110,37 +110,40 @@ function drawPenOrMarker(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
   ctx.restore()
 }
 
-// ===== 霓虹笔：三层发光叠加 =====
+// ===== 霓虹笔：四层半透明描边叠加，无 shadowBlur =====
 //
-// 和当前选择颜色联动：外层宽而模糊，中层稍细，核心白色小细线
-// 用 shadowBlur 制造辉光，shadowColor = 笔色
+// 原先用 shadowBlur 画辉光，每条线都要做高斯模糊，iPad GPU 扛不住。
+// 改用"同一路径画多遍，由宽到窄、由淡到亮"模拟 glow：
+//   外层很宽很淡 → 边缘柔和的辉光
+//   中层中宽中等透明度 → 饱和的光晕
+//   内层接近原色 → 主体线条
+//   最里一层白色 → 高亮核心
+// 视觉上看起来和 shadowBlur 很像，但每层只是一次普通 stroke，快一个数量级。
+
+/** 霓虹笔各层的宽度倍率和 alpha，全量和增量共用一份配置 */
+const NEON_LAYERS: Array<{
+  widthMult: number
+  alpha: number
+  white?: boolean
+  minWidth: number
+}> = [
+  { widthMult: 2.8, alpha: 0.18, minWidth: 6 }, // 外晕
+  { widthMult: 1.6, alpha: 0.45, minWidth: 3 }, // 中层光
+  { widthMult: 0.95, alpha: 0.95, minWidth: 2 }, // 主体
+  { widthMult: 0.32, alpha: 1.0, minWidth: 1, white: true }, // 白色内核
+]
 
 function drawNeon(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
   ctx.save()
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.shadowColor = stroke.color
-
-  // Pass 1: 宽而软的外晕
-  ctx.shadowBlur = 24
-  ctx.strokeStyle = stroke.color
-  ctx.lineWidth = Math.max(3, stroke.size)
-  tracePath(ctx, stroke.points)
-  ctx.stroke()
-
-  // Pass 2: 明亮中层
-  ctx.shadowBlur = 12
-  ctx.lineWidth = Math.max(2, stroke.size * 0.55)
-  tracePath(ctx, stroke.points)
-  ctx.stroke()
-
-  // Pass 3: 白色内核
-  ctx.shadowBlur = 3
-  ctx.strokeStyle = '#ffffff'
-  ctx.lineWidth = Math.max(1, stroke.size * 0.22)
-  tracePath(ctx, stroke.points)
-  ctx.stroke()
-
+  for (const layer of NEON_LAYERS) {
+    ctx.strokeStyle = layer.white ? '#ffffff' : stroke.color
+    ctx.globalAlpha = layer.alpha
+    ctx.lineWidth = Math.max(layer.minWidth, stroke.size * layer.widthMult)
+    tracePath(ctx, stroke.points)
+    ctx.stroke()
+  }
   ctx.restore()
 }
 
@@ -361,35 +364,26 @@ function paintNeonIncremental(
   ctx.save()
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.shadowColor = stroke.color
 
-  // 首点小圆点（三层叠加）
+  // 首点落一个四层小圆点
   if (state.nextPointIndex === 0 && pts.length >= 1) {
-    const drawDot = () => {
+    for (const layer of NEON_LAYERS) {
+      ctx.strokeStyle = layer.white ? '#ffffff' : stroke.color
+      ctx.globalAlpha = layer.alpha
+      ctx.lineWidth = Math.max(layer.minWidth, stroke.size * layer.widthMult)
       ctx.beginPath()
       ctx.moveTo(pts[0].x, pts[0].y)
       ctx.lineTo(pts[0].x + 0.01, pts[0].y + 0.01)
       ctx.stroke()
     }
-    ctx.shadowBlur = 24
-    ctx.strokeStyle = stroke.color
-    ctx.lineWidth = Math.max(3, stroke.size)
-    drawDot()
-    ctx.shadowBlur = 12
-    ctx.lineWidth = Math.max(2, stroke.size * 0.55)
-    drawDot()
-    ctx.shadowBlur = 3
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = Math.max(1, stroke.size * 0.22)
-    drawDot()
     state.nextPointIndex = 1
   }
 
-  // 新 segments: 用一条小 polyline 一次性画完，再分 3 pass
+  // 新 segments：把新增段组成一条小 polyline，然后对它跑四层描边
   const startSeg = Math.max(0, state.nextPointIndex - 1)
   const endSeg = pts.length - 1
   if (startSeg < endSeg) {
-    const drawPoly = () => {
+    const tracePoly = () => {
       ctx.beginPath()
       ctx.moveTo(pts[startSeg].x, pts[startSeg].y)
       for (let i = startSeg + 1; i <= endSeg; i++) {
@@ -397,19 +391,12 @@ function paintNeonIncremental(
       }
       ctx.stroke()
     }
-    ctx.shadowBlur = 24
-    ctx.strokeStyle = stroke.color
-    ctx.lineWidth = Math.max(3, stroke.size)
-    drawPoly()
-
-    ctx.shadowBlur = 12
-    ctx.lineWidth = Math.max(2, stroke.size * 0.55)
-    drawPoly()
-
-    ctx.shadowBlur = 3
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = Math.max(1, stroke.size * 0.22)
-    drawPoly()
+    for (const layer of NEON_LAYERS) {
+      ctx.strokeStyle = layer.white ? '#ffffff' : stroke.color
+      ctx.globalAlpha = layer.alpha
+      ctx.lineWidth = Math.max(layer.minWidth, stroke.size * layer.widthMult)
+      tracePoly()
+    }
   }
 
   state.nextPointIndex = pts.length
