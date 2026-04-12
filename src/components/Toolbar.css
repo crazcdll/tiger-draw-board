@@ -70,6 +70,17 @@
 .tool-btn.save:hover {
   background: var(--tiger-leaf);
 }
+.tool-btn:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+  background: #fffdf5;
+}
+.tool-btn:disabled:hover {
+  background: #fffdf5;
+}
+.tool-btn:disabled:active {
+  transform: none;
+}
 
 /* ===== 颜色按钮 ===== */
 .color-btn {

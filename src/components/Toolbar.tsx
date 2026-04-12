@@ -16,7 +16,10 @@ type Props = {
   onColorChange: (c: string) => void
   onSizeChange: (s: number) => void
   onBgColorChange: (c: string) => void
+  canUndo: boolean
+  canRedo: boolean
   onUndo: () => void
+  onRedo: () => void
   onClear: () => void
   onResetView: () => void
   onExport: () => void
@@ -123,15 +126,25 @@ export default function Toolbar(p: Props) {
         <button
           className="tool-btn"
           onClick={p.onUndo}
-          title="撤销"
+          disabled={!p.canUndo}
+          title="撤销 (Ctrl/Cmd+Z)"
           aria-label="撤销"
         >
           ↩️
         </button>
         <button
+          className="tool-btn"
+          onClick={p.onRedo}
+          disabled={!p.canRedo}
+          title="重做 (Ctrl/Cmd+Shift+Z)"
+          aria-label="重做"
+        >
+          ↪️
+        </button>
+        <button
           className="tool-btn save"
           onClick={p.onExport}
-          title="保存为 PNG"
+          title="保存为 PNG (Ctrl/Cmd+S)"
           aria-label="保存为 PNG"
         >
           💾

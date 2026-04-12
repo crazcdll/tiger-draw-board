@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import Board, { type BoardHandle } from './components/Board'
 import Toolbar from './components/Toolbar'
 import type { BrushType, ToolType } from './core/types'
@@ -34,7 +34,14 @@ function App() {
   const [size, setSize] = useState<number>(SIZES[1])
   const [bgColor, setBgColor] = useState<string>(BG_PALETTE[0])
   const [scale, setScale] = useState(1)
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
   const boardRef = useRef<BoardHandle>(null)
+
+  const handleHistoryChange = useCallback((u: boolean, r: boolean) => {
+    setCanUndo(u)
+    setCanRedo(r)
+  }, [])
 
   return (
     <div className="app">
@@ -46,6 +53,7 @@ function App() {
         size={tool === 'eraser' ? Math.max(size * 2, 20) : size}
         bgColor={bgColor}
         onScaleChange={setScale}
+        onHistoryChange={handleHistoryChange}
       />
       <Toolbar
         tool={tool}
@@ -57,6 +65,8 @@ function App() {
         palette={PALETTE}
         sizes={SIZES}
         bgPalette={BG_PALETTE}
+        canUndo={canUndo}
+        canRedo={canRedo}
         onToolChange={setTool}
         onBrushChange={(b) => {
           setBrush(b)
@@ -69,6 +79,7 @@ function App() {
         onSizeChange={setSize}
         onBgColorChange={setBgColor}
         onUndo={() => boardRef.current?.undo()}
+        onRedo={() => boardRef.current?.redo()}
         onClear={() => {
           if (window.confirm('要清空整个画布吗？清空后无法恢复哦～')) {
             boardRef.current?.clear()

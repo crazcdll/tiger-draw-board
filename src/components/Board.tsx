@@ -23,6 +23,7 @@ import './Board.css'
 
 export type BoardHandle = {
   undo: () => void
+  redo: () => void
   clear: () => void
   resetView: () => void
   exportPng: () => Promise<void>
@@ -36,6 +37,8 @@ type Props = {
   bgColor: string
   /** 每次相机变化时回调（用于父组件显示缩放比例） */
   onScaleChange?: (scale: number) => void
+  /** 历史栈变化时回调（undo/redo 按钮的可用态） */
+  onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void
 }
 
 /**
@@ -55,6 +58,8 @@ type Props = {
 const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const strokesRef = useRef<Stroke[]>([])
+  /** 撤销后被弹出的 stroke；新画一笔或清空时会清空这个栈 */
+  const redoStackRef = useRef<Stroke[]>([])
   const drawingRef = useRef<Stroke | null>(null)
   const cameraRef = useRef<Camera>({ ...DEFAULT_CAMERA })
   const [, forceRender] = useState(0)
@@ -78,39 +83,77 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
   /** 上一次上报给父组件的 scale，用于去重 */
   const lastReportedScaleRef = useRef(cameraRef.current.scale)
 
-  // ===== 暴露给父组件的命令式 API =====
+  // ===== 命令式操作（供 useImperativeHandle 和键盘快捷键共用） =====
+  //
+  // 这些函数在每次渲染都会被重建，但它们**只通过 ref 访问状态**，
+  // 所以用哪次渲染时捕获的闭包都能正常工作。
+  // useImperativeHandle 和 keydown useEffect 都只在 mount 时捕获一次，无伤大雅。
+
+  const notifyHistory = () => {
+    propsRef.current.onHistoryChange?.(
+      strokesRef.current.length > 0,
+      redoStackRef.current.length > 0,
+    )
+  }
+
+  const undoFn = () => {
+    if (strokesRef.current.length === 0) return
+    const last = strokesRef.current[strokesRef.current.length - 1]
+    strokesRef.current = strokesRef.current.slice(0, -1)
+    redoStackRef.current = [...redoStackRef.current, last]
+    render()
+    notifyHistory()
+    forceRender((n) => n + 1)
+  }
+
+  const redoFn = () => {
+    if (redoStackRef.current.length === 0) return
+    const last = redoStackRef.current[redoStackRef.current.length - 1]
+    redoStackRef.current = redoStackRef.current.slice(0, -1)
+    strokesRef.current = [...strokesRef.current, last]
+    render()
+    notifyHistory()
+    forceRender((n) => n + 1)
+  }
+
+  const clearFn = () => {
+    strokesRef.current = []
+    redoStackRef.current = []
+    render()
+    notifyHistory()
+    forceRender((n) => n + 1)
+  }
+
+  const resetViewFn = () => {
+    cameraRef.current = { ...DEFAULT_CAMERA }
+    render()
+    reportScaleIfChanged()
+    forceRender((n) => n + 1)
+  }
+
+  const exportFn = async () => {
+    const blob = await exportStrokesToPngBlob({
+      strokes: strokesRef.current,
+      bgColor: propsRef.current.bgColor,
+    })
+    if (!blob) {
+      window.alert('画布还是空的，先画点什么再保存吧～')
+      return
+    }
+    downloadBlob(blob, `tiger-draw-${formatTimestamp()}.png`)
+  }
+
   useImperativeHandle(
     ref,
     () => ({
-      undo: () => {
-        if (strokesRef.current.length === 0) return
-        strokesRef.current = strokesRef.current.slice(0, -1)
-        render()
-        forceRender((n) => n + 1)
-      },
-      clear: () => {
-        strokesRef.current = []
-        render()
-        forceRender((n) => n + 1)
-      },
-      resetView: () => {
-        cameraRef.current = { ...DEFAULT_CAMERA }
-        render()
-        reportScaleIfChanged()
-        forceRender((n) => n + 1)
-      },
-      exportPng: async () => {
-        const blob = await exportStrokesToPngBlob({
-          strokes: strokesRef.current,
-          bgColor: propsRef.current.bgColor,
-        })
-        if (!blob) {
-          window.alert('画布还是空的，先画点什么再保存吧～')
-          return
-        }
-        downloadBlob(blob, `tiger-draw-${formatTimestamp()}.png`)
-      },
+      undo: undoFn,
+      redo: redoFn,
+      clear: clearFn,
+      resetView: resetViewFn,
+      exportPng: exportFn,
     }),
+    // 仅在 mount 时捕获；这些函数内部只用 ref，不依赖 state/props 快照
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
 
@@ -130,12 +173,29 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     return () => window.removeEventListener('resize', resize)
   }, [])
 
-  // ===== 空格键监听（平移模式） =====
+  // ===== 键盘：空格平移 + Ctrl/Cmd 快捷键 =====
   useEffect(() => {
     const kd = (e: KeyboardEvent) => {
+      // 空格按住 = 平移模式
       if (e.code === 'Space' && !e.repeat) {
         spaceDownRef.current = true
         document.body.style.cursor = 'grab'
+        return
+      }
+
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod) return
+
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undoFn()
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault()
+        redoFn()
+      } else if (key === 's') {
+        e.preventDefault()
+        void exportFn()
       }
     }
     const ku = (e: KeyboardEvent) => {
@@ -150,6 +210,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
       window.removeEventListener('keydown', kd)
       window.removeEventListener('keyup', ku)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ===== 滚轮缩放（必须用原生 addEventListener 才能 preventDefault） =====
@@ -334,9 +395,12 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     // 单指画线结束
     if (drawingRef.current) {
       strokesRef.current = [...strokesRef.current, drawingRef.current]
+      // 历史分叉：新画一笔后原来的 redo 栈无效
+      redoStackRef.current = []
       drawingRef.current = null
       forceRender((n) => n + 1)
       render()
+      notifyHistory()
     }
   }
 
