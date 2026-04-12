@@ -1,0 +1,35 @@
+.app-header {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 10px;
+
+  background: #fff8e1;
+  border: 3px solid var(--tiger-brown);
+  border-radius: 22px;
+  box-shadow:
+    0 4px 0 rgba(90, 58, 34, 0.18),
+    0 10px 20px rgba(90, 58, 34, 0.16);
+
+  /* 不拦截画布事件 */
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app-header-emoji {
+  font-size: 28px;
+  line-height: 1;
+  display: block;
+}
+
+.app-header-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--tiger-brown);
+  letter-spacing: 1px;
+}

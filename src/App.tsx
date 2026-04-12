@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Board, { type BoardHandle } from './components/Board'
 import Toolbar from './components/Toolbar'
+import Header from './components/Header'
 import ConfirmDialog from './components/ConfirmDialog'
 import type { BrushType, ToolType } from './core/types'
 import { loadBgColor, saveBgColor } from './core/storage'
@@ -70,6 +71,7 @@ function App() {
 
   return (
     <div className="app">
+      <Header />
       <Board
         ref={boardRef}
         tool={tool}

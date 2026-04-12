@@ -187,7 +187,7 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     const filename = `tiger-draw-${formatTimestamp()}.png`
     // iPad 上会打开分享面板，选"存储图像"可保存到相册；
     // 桌面浏览器会自动降级为下载
-    await shareOrDownloadBlob(blob, filename, '小老虎画板')
+    await shareOrDownloadBlob(blob, filename, '小虎画板')
   }
 
   useImperativeHandle(
