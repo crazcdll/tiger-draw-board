@@ -227,7 +227,8 @@
 /* 横屏手机：高度极其宝贵，安全区 padding 减半（Home indicator 压在工具栏背景上可接受） */
 @media (max-height: 500px) and (orientation: landscape) {
   .toolbar {
-    padding-bottom: 15px !important;
+    /* iPhone 横屏安全区 ~21px → 取 15px；Android 安全区 0 → 取 4px */
+    padding-bottom: max(4px, min(15px, env(safe-area-inset-bottom))) !important;
   }
 }
 
