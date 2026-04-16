@@ -82,7 +82,7 @@
  * 全宽底栏 + 自然换行，按钮保持 38px 让 3 岁小孩也能点得准。
  * 用满屏幕宽度（无左右圆角边距），减少换行行数。
  * =================================================================== */
-@media (max-width: 640px) {
+@media (max-width: 640px), (max-height: 500px) {
   .toolbar {
     left: 0;
     right: 0;
@@ -92,8 +92,8 @@
     /* 只圆上面两个角 */
     border-radius: 18px 18px 0 0;
     border-width: 2.5px 2.5px 0;
-    /* 底部 padding 加上安全区（iPhone 的 Home indicator 条） */
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    /* 顶部极紧凑，底部只留安全区（Android 至少 4px） */
+    padding: 3px 6px max(4px, env(safe-area-inset-bottom));
     gap: 5px;
     box-shadow:
       0 -4px 0 rgba(90, 58, 34, 0.12),
@@ -221,6 +221,13 @@
   }
   .toolbar-mini:active {
     transform: translateX(-50%) scale(0.92);
+  }
+}
+
+/* 横屏手机：高度极其宝贵，安全区 padding 减半（Home indicator 压在工具栏背景上可接受） */
+@media (max-height: 500px) and (orientation: landscape) {
+  .toolbar {
+    padding-bottom: 15px !important;
   }
 }
 

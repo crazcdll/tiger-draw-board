@@ -35,7 +35,7 @@
 }
 
 /* 手机模式：整体收小 */
-@media (max-width: 640px) {
+@media (max-width: 640px), (max-height: 500px) {
   .app-header {
     top: max(10px, env(safe-area-inset-top));
     left: max(10px, env(safe-area-inset-left));
