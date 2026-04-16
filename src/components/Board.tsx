@@ -261,7 +261,20 @@ const Board = forwardRef<BoardHandle, Props>(function Board(props, ref) {
     }
     resize()
     window.addEventListener('resize', resize)
-    return () => window.removeEventListener('resize', resize)
+    // iOS Safari 旋转屏幕时 resize 事件不可靠（可能不触发或
+    // window.innerWidth 还没更新）。额外监听 orientationchange，
+    // 延迟 150ms 等视口尺寸稳定后再 resize。
+    let orientTimer: number | null = null
+    const onOrientationChange = () => {
+      if (orientTimer !== null) clearTimeout(orientTimer)
+      orientTimer = setTimeout(resize, 150) as unknown as number
+    }
+    window.addEventListener('orientationchange', onOrientationChange)
+    return () => {
+      window.removeEventListener('resize', resize)
+      window.removeEventListener('orientationchange', onOrientationChange)
+      if (orientTimer !== null) clearTimeout(orientTimer)
+    }
   }, [])
 
   // ===== 键盘：空格平移 + Ctrl/Cmd 快捷键 =====
