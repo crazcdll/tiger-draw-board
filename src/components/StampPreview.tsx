@@ -20,7 +20,11 @@ function ProceduralPreview({ stamp }: { stamp: string }) {
     const c = ref.current
     if (!c) return
     const dpr = window.devicePixelRatio || 1
-    const cssSize = 30
+    // 手机窄屏时按钮变小，预览 canvas 跟着变小
+    const isPhone =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(max-width: 640px)').matches
+    const cssSize = isPhone ? 24 : 30
     c.width = cssSize * dpr
     c.height = cssSize * dpr
     c.style.width = `${cssSize}px`

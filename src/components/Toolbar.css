@@ -1,7 +1,8 @@
 .toolbar {
   position: fixed;
   left: 50%;
-  bottom: 18px;
+  /* 贴底部，但给 iOS Safari 的 home indicator 留安全区 */
+  bottom: max(18px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 10;
 
@@ -28,7 +29,7 @@
 .toolbar-mini {
   position: fixed;
   left: 50%;
-  bottom: 18px;
+  bottom: max(18px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 10;
 
@@ -71,6 +72,169 @@
     transform: translateX(-50%) translateY(0) scale(1);
   }
 }
+
+/* ===================================================================
+ * 手机模式：屏幕宽度 <= 640px（iPhone / 安卓竖屏）
+ * 按钮和间距整体缩小约 25~30%，让 12+ 项的工具栏也能塞进窄屏
+ * =================================================================== */
+/* ===================================================================
+ * 手机模式（≤ 640px）
+ * 全宽底栏 + 自然换行，按钮保持 38px 让 3 岁小孩也能点得准。
+ * 用满屏幕宽度（无左右圆角边距），减少换行行数。
+ * =================================================================== */
+@media (max-width: 640px) {
+  .toolbar {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform: none;
+    max-width: 100vw;
+    /* 只圆上面两个角 */
+    border-radius: 18px 18px 0 0;
+    border-width: 2.5px 2.5px 0;
+    /* 底部 padding 加上安全区（iPhone 的 Home indicator 条） */
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    gap: 5px;
+    box-shadow:
+      0 -4px 0 rgba(90, 58, 34, 0.12),
+      0 -10px 24px rgba(90, 58, 34, 0.16);
+    animation: toolbar-slide-up 0.22s ease-out;
+  }
+
+  .group {
+    gap: 4px;
+  }
+
+  .divider {
+    width: 1.5px;
+    height: 26px;
+  }
+
+  /* ---- 手机按钮：!important 确保覆盖桌面尺寸 ---- */
+  .tool-btn {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    border-radius: 9px !important;
+    border-width: 1px !important;
+    font-size: 16px !important;
+    padding: 0 !important;
+  }
+  .tool-btn.active {
+    box-shadow: inset 0 0 0 1px #fff !important;
+  }
+
+  .color-btn {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    border-width: 1px !important;
+    padding: 0 !important;
+  }
+  .color-btn.active {
+    transform: scale(1.15);
+    box-shadow:
+      0 0 0 1px var(--tiger-yellow),
+      0 0 0 2px var(--tiger-brown) !important;
+  }
+
+  .bg-btn {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    border-width: 1px !important;
+    border-radius: 5px !important;
+    padding: 0 !important;
+  }
+  .bg-btn::after {
+    width: 4px;
+    height: 4px;
+    right: 1px;
+    bottom: 1px;
+  }
+  .bg-btn.active {
+    transform: scale(1.15);
+    box-shadow:
+      0 0 0 1px var(--tiger-yellow),
+      0 0 0 2px var(--tiger-brown) !important;
+  }
+
+  .stamp-btn {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    border-width: 1px !important;
+    border-radius: 7px !important;
+    font-size: 14px !important;
+    padding: 0 !important;
+  }
+  .stamp-btn.active {
+    box-shadow: inset 0 0 0 1px #fff !important;
+  }
+
+  .size-btn {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    border-width: 1px !important;
+    border-radius: 7px !important;
+    padding: 0 !important;
+  }
+  .size-btn.active {
+    box-shadow: inset 0 0 0 1px #fff !important;
+  }
+
+  /* 笔触粗细里的圆点：限制最大尺寸避免溢出小按钮 */
+  .size-dot {
+    max-width: 18px !important;
+    max-height: 18px !important;
+    border-width: 1px !important;
+  }
+
+  .zoom-btn {
+    min-width: 34px !important;
+    height: 32px !important;
+    border-width: 1px !important;
+    border-radius: 9px !important;
+    padding: 1px 4px !important;
+  }
+  .zoom-icon {
+    font-size: 12px !important;
+  }
+  .zoom-label {
+    font-size: 8px !important;
+  }
+
+  .toolbar-mini {
+    left: 50%;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: 40px;
+    height: 40px;
+    border-width: 2px;
+    font-size: 22px;
+  }
+  .toolbar-mini:active {
+    transform: translateX(-50%) scale(0.92);
+  }
+}
+
+@keyframes toolbar-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 
 .group {
   display: flex;
