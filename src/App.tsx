@@ -44,6 +44,10 @@ const STAMP_PALETTE = [
   '🐶',
   'bichon1', // 程序化比熊 · 带黄围脖
   'bichon2', // 程序化比熊 · 带腮红
+  'baba',    // 家人头像 · 爸爸（黑色短发）
+  'mama',    // 家人头像 · 妈妈（齐刘海 + 小红花）
+  'yeye',    // 家人头像 · 爷爷（花白鬓角 + 老花镜）
+  'nainai',  // 家人头像 · 奶奶（灰白发 + 头顶发髻）
 ] as const
 
 function App() {

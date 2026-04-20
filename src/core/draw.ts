@@ -623,9 +623,299 @@ export function drawProceduralStamp(
   return true
 }
 
+// ===== 家人头像图章：卡通中国家庭 =====
+//
+// 标准 emoji 👨👩👴👵 对中国孩子来说辨识度不够（多数 emoji 渲染成金发白人脸），
+// 所以用程序化绘制还原中国家庭的常见特征：
+//   爸爸（~35）：黑色短发 + 侧分刘海 + 方框眼镜
+//   妈妈（~30）：黑色高马尾 + 齐刘海 + 粉色蝴蝶结发绳
+//   爷爷（~60）：花白短发（有头发，不地中海） + 圆框老花镜 + 花白眉
+//   奶奶（~55）：黑发 + 头顶发髻 + 笑眯眯眼
+//
+// 所有部件基于面部半径 fr 做相对布局，绘制时先铺后层（头发背面）再盖面部，
+// 然后用 clip 到面部圆内画刘海，最后画五官和配饰。
+
+type FamilyRole = 'baba' | 'mama' | 'yeye' | 'nainai'
+
+const FAMILY_SKIN = '#ffd9b4'
+const FAMILY_OUTLINE = '#6b4a2b'
+const HAIR_BLACK = '#1f1f1f'
+/** 爷爷的花白发：60 岁通常不是纯白，用中灰更自然 */
+const HAIR_GRAY = '#c2c2c2'
+
+function drawFamilyPortraitAt(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  role: FamilyRole,
+): void {
+  ctx.save()
+  const r = size / 2
+  const lw = Math.max(1, size * 0.04)
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+
+  // 面部中心略向上偏，上方给头发/发髻留空间
+  const fx = cx
+  const fy = cy - r * 0.06
+  const fr = r * 0.55
+
+  // ---------- 1. 后层头发（会被面部覆盖下半部分，只露顶和两侧） ----------
+  ctx.strokeStyle = FAMILY_OUTLINE
+  ctx.lineWidth = lw
+  if (role === 'mama') {
+    // 高马尾：头发都拉到头顶扎起来了，两侧贴头皮更干净，不能再披下来
+    ctx.fillStyle = HAIR_BLACK
+    ctx.beginPath()
+    ctx.ellipse(fx, fy - fr * 0.05, fr * 1.06, fr * 1.02, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  } else if (role === 'nainai') {
+    // 奶奶：黑发贴头，长度到耳下（盘起来了，不会披下来）
+    ctx.fillStyle = HAIR_BLACK
+    ctx.beginPath()
+    ctx.ellipse(fx, fy - fr * 0.05, fr * 1.08, fr * 1.05, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  } else if (role === 'baba') {
+    // 短发帽：椭圆上移，只露顶部和两侧一圈
+    ctx.fillStyle = HAIR_BLACK
+    ctx.beginPath()
+    ctx.ellipse(fx, fy - fr * 0.18, fr * 1.05, fr * 0.95, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  } else if (role === 'yeye') {
+    // 爷爷：满头花白短发，和爸爸同样的椭圆帽位，只是换灰色
+    ctx.fillStyle = HAIR_GRAY
+    ctx.beginPath()
+    ctx.ellipse(fx, fy - fr * 0.18, fr * 1.05, fr * 0.95, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+
+  // ---------- 2. 奶奶的发髻（头顶一个黑色圆包） ----------
+  if (role === 'nainai') {
+    ctx.fillStyle = HAIR_BLACK
+    ctx.strokeStyle = FAMILY_OUTLINE
+    ctx.lineWidth = lw
+    ctx.beginPath()
+    ctx.arc(fx, fy - fr * 1.18, fr * 0.3, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+
+  // ---------- 2.5 妈妈的高马尾（画在面部之前，让面部盖住"根部"多余部分） ----------
+  // 核心形状是一个倾斜 60° 朝右上扬起的长椭圆，加一小撮贴边的"卷翘"增加蓬松感，
+  // 让它看起来像甩起来的马尾而不是一根棒子。
+  if (role === 'mama') {
+    ctx.fillStyle = HAIR_BLACK
+    ctx.strokeStyle = FAMILY_OUTLINE
+    ctx.lineWidth = lw
+
+    const tailCx = fx + fr * 0.35
+    const tailCy = fy - fr * 0.98
+    const tailAngle = -Math.PI / 3
+
+    // 主发束
+    ctx.beginPath()
+    ctx.ellipse(tailCx, tailCy, fr * 0.72, fr * 0.2, tailAngle, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+
+    // 尾端小卷翘（角度略微掰开，制造"发梢翘起来"的效果）
+    const tipCx = tailCx + Math.cos(tailAngle) * fr * 0.55
+    const tipCy = tailCy + Math.sin(tailAngle) * fr * 0.55
+    ctx.beginPath()
+    ctx.ellipse(tipCx, tipCy, fr * 0.22, fr * 0.13, tailAngle - 0.25, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+
+  // ---------- 3. 面部 ----------
+  ctx.fillStyle = FAMILY_SKIN
+  ctx.strokeStyle = FAMILY_OUTLINE
+  ctx.lineWidth = lw
+  ctx.beginPath()
+  ctx.arc(fx, fy, fr, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+
+  // ---------- 4. 前刘海（clip 到面部圆内，避免超出脸） ----------
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(fx, fy, fr, 0, Math.PI * 2)
+  ctx.clip()
+
+  if (role === 'baba') {
+    // 侧分刘海：椭圆带点倾斜
+    ctx.fillStyle = HAIR_BLACK
+    ctx.beginPath()
+    ctx.ellipse(fx - fr * 0.2, fy - fr * 0.55, fr * 1.15, fr * 0.5, -0.22, 0, Math.PI * 2)
+    ctx.fill()
+  } else if (role === 'mama') {
+    // 齐刘海：对称椭圆
+    ctx.fillStyle = HAIR_BLACK
+    ctx.beginPath()
+    ctx.ellipse(fx, fy - fr * 0.58, fr * 1.1, fr * 0.52, 0, 0, Math.PI * 2)
+    ctx.fill()
+  } else if (role === 'nainai') {
+    // 前发：黑色贴头顶
+    ctx.fillStyle = HAIR_BLACK
+    ctx.beginPath()
+    ctx.ellipse(fx, fy - fr * 0.62, fr * 1.1, fr * 0.45, 0, 0, Math.PI * 2)
+    ctx.fill()
+  } else if (role === 'yeye') {
+    // 爷爷：灰色侧分刘海（和爸爸同样形状，不再地中海）
+    ctx.fillStyle = HAIR_GRAY
+    ctx.beginPath()
+    ctx.ellipse(fx - fr * 0.2, fy - fr * 0.55, fr * 1.15, fr * 0.5, -0.22, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
+
+  // ---------- 5. 眼镜 ----------
+  // 爷爷：圆框老花镜；爸爸：方框眼镜（35 岁白领常见款）
+  if (role === 'yeye') {
+    const gR = fr * 0.26
+    const gY = fy - fr * 0.02
+    const gDx = fr * 0.36
+    ctx.strokeStyle = '#2a2a2a'
+    ctx.lineWidth = Math.max(1, lw * 0.9)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'
+    for (const gx of [fx - gDx, fx + gDx]) {
+      ctx.beginPath()
+      ctx.arc(gx, gY, gR, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+    }
+    // 鼻梁
+    ctx.beginPath()
+    ctx.moveTo(fx - gDx + gR, gY)
+    ctx.lineTo(fx + gDx - gR, gY)
+    ctx.stroke()
+  } else if (role === 'baba') {
+    const gW = fr * 0.5
+    const gH = fr * 0.34
+    const gY = fy - fr * 0.02
+    const gDx = fr * 0.38
+    const gRr = gH * 0.28
+    ctx.strokeStyle = '#1a1a1a'
+    ctx.lineWidth = Math.max(1, lw * 0.9)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'
+    for (const gx of [fx - gDx, fx + gDx]) {
+      ctx.beginPath()
+      ctx.roundRect(gx - gW / 2, gY - gH / 2, gW, gH, gRr)
+      ctx.fill()
+      ctx.stroke()
+    }
+    // 鼻梁
+    ctx.beginPath()
+    ctx.moveTo(fx - gDx + gW / 2, gY)
+    ctx.lineTo(fx + gDx - gW / 2, gY)
+    ctx.stroke()
+  }
+
+  // ---------- 6. 眉毛（爷爷花白眉，其他省略） ----------
+  if (role === 'yeye') {
+    // 比头发深一档，才能在灰色头发下看得出是眉毛
+    ctx.strokeStyle = '#7a7a7a'
+    ctx.lineWidth = Math.max(1.5, lw * 1.2)
+    for (const sx of [-1, 1]) {
+      ctx.beginPath()
+      ctx.moveTo(fx + sx * fr * 0.48, fy - fr * 0.32)
+      ctx.lineTo(fx + sx * fr * 0.22, fy - fr * 0.36)
+      ctx.stroke()
+    }
+  }
+
+  // ---------- 7. 眼睛 ----------
+  const eyeY = fy - fr * 0.02
+  const eyeDx = fr * 0.35
+  const eyeR = Math.max(1.4, fr * 0.1)
+  if (role === 'nainai') {
+    // 笑眯眯：朝下凸的弧线（∩）
+    ctx.strokeStyle = '#1a1a1a'
+    ctx.lineWidth = Math.max(1.2, lw * 1.1)
+    for (const ex of [fx - eyeDx, fx + eyeDx]) {
+      ctx.beginPath()
+      ctx.moveTo(ex - eyeR * 1.3, eyeY + eyeR * 0.3)
+      ctx.quadraticCurveTo(ex, eyeY - eyeR * 0.7, ex + eyeR * 1.3, eyeY + eyeR * 0.3)
+      ctx.stroke()
+    }
+  } else {
+    // 圆眼睛 + 白色高光
+    for (const ex of [fx - eyeDx, fx + eyeDx]) {
+      ctx.fillStyle = '#1a1a1a'
+      ctx.beginPath()
+      ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#ffffff'
+      ctx.beginPath()
+      ctx.arc(ex - eyeR * 0.32, eyeY - eyeR * 0.32, Math.max(0.6, eyeR * 0.4), 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  // ---------- 8. 鼻子（小点） ----------
+  ctx.fillStyle = FAMILY_OUTLINE
+  ctx.beginPath()
+  ctx.arc(fx, fy + fr * 0.18, Math.max(0.8, fr * 0.045), 0, Math.PI * 2)
+  ctx.fill()
+
+  // ---------- 9. 嘴巴（微笑弧） ----------
+  ctx.strokeStyle = FAMILY_OUTLINE
+  ctx.lineWidth = Math.max(1, lw * 1.0)
+  ctx.beginPath()
+  ctx.arc(fx, fy + fr * 0.3, fr * 0.2, Math.PI * 0.18, Math.PI * 0.82)
+  ctx.stroke()
+
+  // ---------- 10. 腮红（妈妈、奶奶） ----------
+  if (role === 'mama' || role === 'nainai') {
+    ctx.fillStyle = 'rgba(255, 150, 160, 0.55)'
+    for (const bx of [fx - fr * 0.55, fx + fr * 0.55]) {
+      ctx.beginPath()
+      ctx.ellipse(bx, fy + fr * 0.22, fr * 0.16, fr * 0.08, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  // ---------- 11. 妈妈高马尾的粉色蝴蝶结发绳（画在最上层） ----------
+  // 位置：马尾从头顶冒出来的根部，压在发束和后发相交的地方
+  if (role === 'mama') {
+    const tieX = fx + fr * 0.1
+    const tieY = fy - fr * 0.93
+    const bowR = fr * 0.16
+
+    ctx.fillStyle = '#ff6b8b'
+    ctx.strokeStyle = FAMILY_OUTLINE
+    ctx.lineWidth = Math.max(1, lw * 0.75)
+
+    // 左右两瓣蝴蝶结
+    for (const dx of [-bowR * 0.85, bowR * 0.85]) {
+      ctx.beginPath()
+      ctx.ellipse(tieX + dx, tieY, bowR * 0.75, bowR * 0.55, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+    }
+    // 中间小结
+    ctx.fillStyle = '#e34b74'
+    ctx.beginPath()
+    ctx.arc(tieX, tieY, bowR * 0.32, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+
+  ctx.restore()
+}
+
 const PROCEDURAL_STAMPS: Record<string, ProceduralStamp> = {
   bichon1: (ctx, cx, cy, size) => drawBichonAt(ctx, cx, cy, size, 'bib'),
   bichon2: (ctx, cx, cy, size) => drawBichonAt(ctx, cx, cy, size, 'plain'),
+  baba: (ctx, cx, cy, size) => drawFamilyPortraitAt(ctx, cx, cy, size, 'baba'),
+  mama: (ctx, cx, cy, size) => drawFamilyPortraitAt(ctx, cx, cy, size, 'mama'),
+  yeye: (ctx, cx, cy, size) => drawFamilyPortraitAt(ctx, cx, cy, size, 'yeye'),
+  nainai: (ctx, cx, cy, size) => drawFamilyPortraitAt(ctx, cx, cy, size, 'nainai'),
 }
 
 export function isProceduralStamp(key: string): boolean {
